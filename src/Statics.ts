@@ -16,22 +16,22 @@ export class Statics {
 
   // MARK: environments
   static readonly buildEnvironment = {
-    account: '',
+    account: '836443378780',
     region: 'eu-central-1',
   };
 
   static readonly productionEnvironment = {
-    account: '',
+    account: '664926621746',
     region: 'eu-central-1',
   };
 
   static readonly acceptanceEnvironment = {
-    account: '',
+    account: '938595516784',
     region: 'eu-central-1',
   };
 
   static readonly developmentEnvironment = {
-    account: '',
+    account: '013052902779',
     region: 'eu-central-1',
   };
 

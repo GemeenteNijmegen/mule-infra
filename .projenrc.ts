@@ -2,7 +2,7 @@ import { GemeenteNijmegenCdkApp } from '@gemeentenijmegen/projen-project-type';
 const project = new GemeenteNijmegenCdkApp({
   cdkVersion: '2.189.1',
   defaultReleaseBranch: 'main',
-  devDeps: ['@gemeentenijmegen/projen-project-type'],
+  deps: ['@gemeentenijmegen/projen-project-type'],
   makeSampleFiles: true,
   name: 'mule-infra',
   projenrcTs: true,
