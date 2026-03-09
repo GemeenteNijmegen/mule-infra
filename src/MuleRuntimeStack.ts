@@ -9,5 +9,11 @@ interface MainStackProps extends StackProps, Configurable { }
 export class MainStack extends Stack {
   constructor(scope: Construct, id: string, private readonly props: MainStackProps) {
     super(scope, id, props);
+
+    new s3.Bucket(this, 'bucket', {
+      bucketName: `${Statics.projectName}-test`,
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
   }
 }
