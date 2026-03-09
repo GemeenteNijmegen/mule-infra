@@ -69,7 +69,7 @@ export class PipelineStack extends Stack {
       ],
     });
 
-    const pipelineName = `${Statics.projectName}-${this.props.configuration.branchName}`;
+    const pipelineName = `mule-pipeline-${this.props.configuration.branchName}`;
     const pipeline = new pipelines.CodePipeline(this, pipelineName, {
       pipelineName: pipelineName,
       crossAccountKeys: true,
