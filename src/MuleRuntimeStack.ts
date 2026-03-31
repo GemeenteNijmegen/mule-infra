@@ -1,13 +1,19 @@
-import { RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
-import * as s3 from 'aws-cdk-lib/aws-s3';
+import { Aspects, Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
-import { Statics } from './Statics';
+import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 
-interface MainStackProps extends StackProps, Configurable { }
+interface MuleRuntimeStackProps extends StackProps, Configurable { }
 
-export class MainStack extends Stack {
-  constructor(scope: Construct, id: string, private readonly props: MainStackProps) {
+export class MuleRuntimeStack extends Stack {
+  constructor(scope: Construct, id: string, private readonly props: MuleRuntimeStackProps) {
     super(scope, id, props);
+    Aspects.of(this).add(new PermissionsBoundaryAspect());
+
+    // cluster definieren
+    // Task definition
+    // service definieren
+    // VPC regelen met security groups etc.
+    // Image van ECR pullen
   }
 }

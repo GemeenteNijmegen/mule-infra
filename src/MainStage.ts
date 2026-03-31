@@ -2,7 +2,7 @@ import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import { Aspects, Stage, StageProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
-import { MainStack } from './MuleRuntimeStack';
+import { MuleRuntimeStack } from './MuleRuntimeStack';
 
 interface MainStageProps extends StageProps, Configurable { }
 
@@ -20,7 +20,7 @@ export class MainStage extends Stage {
      * Main stack of this project
      * TODO you probably want to rename this stack
      */
-    new MainStack(this, 'stack', { // Translates to mijn-services-stack
+    new MuleRuntimeStack(this, 'stack', { // Translates to mijn-services-stack
       env: props.configuration.deploymentEnvironment,
       configuration: props.configuration,
     });
