@@ -31,8 +31,8 @@ export class MuleRuntimeStack extends Stack {
         SECRET_MULE_LICENSE_ARN: secret.secretArn,
       },
       secrets: {
-        MULE_SERVER_NAME: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleServerName', Statics.ssmMuleServerName)),
-        MULE_ANYPOINT_ENV_TOKEN: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvToken', Statics.ssmMuleAnypointEnvToken)),
+        SERVER_NAME: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleServerName', Statics.ssmMuleServerName)),
+        ANYPOINT_ENV_TOKEN: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvToken', Statics.ssmMuleAnypointEnvToken)),
       },
     });
 
