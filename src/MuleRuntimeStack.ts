@@ -21,17 +21,22 @@ export class MuleRuntimeStack extends Stack {
     });
 
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image');
+    const secret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
 
     const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, 'MuleRuntimeTaskDefinition');
     const container = taskDefinition.addContainer('MuleRuntimeContainer', {
       image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'latest'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
+      environment: {
+        SECRET_MULE_LICENSE_ARN: secret.secretArn,
+      },
       secrets: {
-        MULE_LICENSE_LIC: ecs.Secret.fromSecretsManager(Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense)),
         MULE_SERVER_NAME: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleServerName', Statics.ssmMuleServerName)),
         MULE_ANYPOINT_ENV_TOKEN: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvToken', Statics.ssmMuleAnypointEnvToken)),
       },
     });
+
+    secret.grantRead(taskDefinition.executionRole!);
 
     container.addPortMappings({
       containerPort: 443,
