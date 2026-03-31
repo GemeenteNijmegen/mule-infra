@@ -16,7 +16,7 @@ export class Statics {
 
   static readonly ssmMuleServerName = `/${Statics.projectName}/mule/server-name`;
   static readonly ssmMuleAnypointEnvToken = `/${Statics.projectName}/mule/anypoint-env-token`;
-  static readonly ssmMuleLicense = `/${Statics.projectName}/mule/license`;
+  static readonly secretMuleLicense = `/${Statics.projectName}/mule/license`;
 
   // MARK: environments
   static readonly buildEnvironment = {

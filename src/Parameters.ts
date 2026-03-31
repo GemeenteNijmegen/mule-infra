@@ -1,10 +1,10 @@
 import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import { Aspects, Stack, Stage, StageProps, Tags } from 'aws-cdk-lib';
+import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
-import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 
 export interface ParameterStageProps extends StageProps, Configurable { }
 
@@ -43,7 +43,7 @@ export class ParameterStack extends Stack {
     });
 
     new Secret(this, 'mule-license', {
-      secretName: Statics.ssmMuleLicense,
+      secretName: Statics.secretMuleLicense,
     });
   }
 }

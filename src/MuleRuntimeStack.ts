@@ -2,8 +2,11 @@ import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmege
 import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2 } from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
+import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
+import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
+import { Statics } from './Statics';
 
 interface MuleRuntimeStackProps extends StackProps, Configurable { }
 
@@ -23,6 +26,11 @@ export class MuleRuntimeStack extends Stack {
     const container = taskDefinition.addContainer('MuleRuntimeContainer', {
       image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'latest'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
+      secrets: {
+        MULE_LICENSE_LIC: ecs.Secret.fromSecretsManager(Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense)),
+        MULE_SERVER_NAME: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleServerName', Statics.ssmMuleServerName)),
+        MULE_ANYPOINT_ENV_TOKEN: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvToken', Statics.ssmMuleAnypointEnvToken)),
+      },
     });
 
     container.addPortMappings({
