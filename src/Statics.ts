@@ -14,6 +14,10 @@ export class Statics {
 
   static readonly ssmDummyParameter = `/${Statics.projectName}/dummy/parameter`;
 
+  static readonly ssmMuleServerName = `/${Statics.projectName}/mule/server-name`;
+  static readonly ssmMuleAnypointEnvToken = `/${Statics.projectName}/mule/anypoint-env-token`;
+  static readonly ssmMuleLicense = `/${Statics.projectName}/mule/license`;
+
   // MARK: environments
   static readonly buildEnvironment = {
     account: '836443378780',

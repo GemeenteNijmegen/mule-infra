@@ -4,6 +4,7 @@ import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
+import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 
 export interface ParameterStageProps extends StageProps, Configurable { }
 
@@ -31,10 +32,18 @@ export class ParameterStack extends Stack {
     Tags.of(this).add('cdkManaged', 'yes');
     Tags.of(this).add('Project', Statics.projectName);
 
-    new StringParameter(this, 'ssm-dummy', {
+    new StringParameter(this, 'mule-server-name', {
       stringValue: '-',
-      parameterName: Statics.ssmDummyParameter,
+      parameterName: Statics.ssmMuleServerName,
     });
 
+    new StringParameter(this, 'mule-anypoint-env-token', {
+      stringValue: '-',
+      parameterName: Statics.ssmMuleAnypointEnvToken,
+    });
+
+    new Secret(this, 'mule-license', {
+      secretName: Statics.ssmMuleLicense,
+    });
   }
 }
