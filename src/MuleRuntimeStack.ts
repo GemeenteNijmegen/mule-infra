@@ -25,7 +25,7 @@ export class MuleRuntimeStack extends Stack {
 
     const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, 'MuleRuntimeTaskDefinition');
     const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, '50ef5b84977bc7fd0211a12073f6ec432d9ec8ef'),
+      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, '6fbbee9fa182e0b951691e0b15d79d35c2c0a6b4'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
       environment: {
         SECRET_MULE_LICENSE_ARN: secret.secretArn,
