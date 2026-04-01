@@ -39,7 +39,7 @@ export class MuleRuntimeStack extends Stack {
       },
     });
 
-    secret.grantRead(taskDefinition.executionRole!);
+    secret.grantRead(taskDefinition.taskRole);
 
     container.addPortMappings({
       containerPort: 443,
