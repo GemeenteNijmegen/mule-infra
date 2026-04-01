@@ -23,7 +23,10 @@ export class MuleRuntimeStack extends Stack {
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image');
     const secret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
 
-    const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, 'MuleRuntimeTaskDefinition');
+    const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, 'MuleRuntimeTaskDefinition', {
+      cpu: 1024,
+      memoryLimitMiB: 8192,
+    });
     const container = taskDefinition.addContainer('MuleRuntimeContainer', {
       image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, '700e03c3c7f2ad9d6018e9bec5dae6d52099c294'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
