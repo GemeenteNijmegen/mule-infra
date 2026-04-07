@@ -28,7 +28,7 @@ export class MuleRuntimeStack extends Stack {
       memoryLimitMiB: 8192,
     });
     const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, '8b6f0a64c383b8113dc238572facee90ac534c05'),
+      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'd8f3d9f058c1b429464812183116602d99fdb398'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
       environment: {
         SECRET_MULE_LICENSE_ARN: secret.secretArn,
@@ -38,7 +38,7 @@ export class MuleRuntimeStack extends Stack {
         ANYPOINT_ENV_TOKEN: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvToken', Statics.ssmMuleAnypointEnvToken)),
       },
       healthCheck: {
-        command: ['CMD-SHELL', '/opt/mule/bin/mule status | grep "Mule Enterprise Edition is running" || exit 1'],
+        command: ['CMD-SHELL', 'curl -f http://localhost:8081/health || exit 1'],
         interval: Duration.seconds(30),
         timeout: Duration.seconds(10),
         startPeriod: Duration.seconds(180),
