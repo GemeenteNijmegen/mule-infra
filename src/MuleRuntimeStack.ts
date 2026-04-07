@@ -41,7 +41,7 @@ export class MuleRuntimeStack extends Stack {
         command: ['CMD-SHELL', 'curl -f http://localhost:8081/health || exit 1'],
         interval: Duration.seconds(30),
         timeout: Duration.seconds(10),
-        startPeriod: Duration.seconds(180),
+        startPeriod: Duration.seconds(300),
         retries: 5,
       },
     });
