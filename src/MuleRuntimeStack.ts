@@ -40,9 +40,9 @@ export class MuleRuntimeStack extends Stack {
       healthCheck: {
         command: ['CMD-SHELL', '/opt/mule/bin/mule status | grep "Mule Enterprise Edition is running" || exit 1'],
         interval: Duration.seconds(30),
-        timeout: Duration.seconds(5),
-        startPeriod: Duration.seconds(60),
-        retries: 3,
+        timeout: Duration.seconds(10),
+        startPeriod: Duration.seconds(180),
+        retries: 5,
       },
     });
 
