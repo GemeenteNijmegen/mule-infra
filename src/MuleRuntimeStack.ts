@@ -1,5 +1,5 @@
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2 } from 'aws-cdk-lib';
+import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, Duration } from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -36,6 +36,13 @@ export class MuleRuntimeStack extends Stack {
       secrets: {
         SERVER_NAME: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleServerName', Statics.ssmMuleServerName)),
         ANYPOINT_ENV_TOKEN: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvToken', Statics.ssmMuleAnypointEnvToken)),
+      },
+      healthCheck: {
+        command: ['CMD-SHELL', '/opt/mule/bin/mule status | grep "Mule Enterprise Edition is running" || exit 1'],
+        interval: Duration.seconds(30),
+        timeout: Duration.seconds(5),
+        startPeriod: Duration.seconds(60),
+        retries: 3,
       },
     });
 
