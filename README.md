@@ -4,6 +4,8 @@ This project contains infrastructure for running mule runtime in AWS.
 
 It pulls the docker image from ECR from the gn-build account, and runs it in ECS Fargate.
 
+The repo with the docker image is [here](https://github.com/GemeenteNijmegen/mule-docker-image).
+
 ## Manual steps
 
 1. To set the license secret:
