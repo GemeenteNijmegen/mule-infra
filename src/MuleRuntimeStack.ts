@@ -42,12 +42,12 @@ export class MuleRuntimeStack extends Stack {
     secret.grantRead(taskDefinition.taskRole);
 
     container.addPortMappings({
-      containerPort: 443,
+      containerPort: 8082,
       protocol: ecs.Protocol.TCP,
     });
 
     container.addPortMappings({
-      containerPort: 8080,
+      containerPort: 8081,
       protocol: ecs.Protocol.TCP,
     });
 
