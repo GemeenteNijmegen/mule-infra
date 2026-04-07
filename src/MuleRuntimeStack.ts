@@ -1,5 +1,5 @@
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, Duration } from 'aws-cdk-lib';
+import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2 } from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -28,7 +28,7 @@ export class MuleRuntimeStack extends Stack {
       memoryLimitMiB: 8192,
     });
     const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'd65bbc34bbee1ca4a55aa862c88d48f0d194d316'),
+      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, '8b6f0a64c383b8113dc238572facee90ac534c05'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
       environment: {
         SECRET_MULE_LICENSE_ARN: secret.secretArn,
@@ -36,13 +36,6 @@ export class MuleRuntimeStack extends Stack {
       secrets: {
         SERVER_NAME: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleServerName', Statics.ssmMuleServerName)),
         ANYPOINT_ENV_TOKEN: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvToken', Statics.ssmMuleAnypointEnvToken)),
-      },
-      healthCheck: {
-        command: ['CMD-SHELL', 'curl -f http://localhost:8081/health || exit 1'],
-        interval: Duration.seconds(30),
-        timeout: Duration.seconds(10),
-        startPeriod: Duration.seconds(300),
-        retries: 5,
       },
     });
 
