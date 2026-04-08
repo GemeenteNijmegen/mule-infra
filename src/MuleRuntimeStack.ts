@@ -57,6 +57,9 @@ export class MuleRuntimeStack extends Stack {
       desiredCount: props.configuration.taskCount,
       minHealthyPercent: props.configuration.minHealthyPercent,
       maxHealthyPercent: props.configuration.maxHealthyPercent,
+      // Disabled so we can configure a maxHealthyPercent of 100 for test.
+      // Perhaps we can conditionally enable this for acc/prd.
+      availabilityZoneRebalancing: ecs.AvailabilityZoneRebalancing.DISABLED,
       // add to a subnet with internet access
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       enableExecuteCommand: true,
