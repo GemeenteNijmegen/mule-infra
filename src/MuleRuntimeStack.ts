@@ -54,7 +54,9 @@ export class MuleRuntimeStack extends Stack {
     new ecs.FargateService(this, 'Service', {
       cluster,
       taskDefinition,
-      minHealthyPercent: 100,
+      desiredCount: props.configuration.taskCount,
+      minHealthyPercent: props.configuration.minHealthyPercent,
+      maxHealthyPercent: props.configuration.maxHealthyPercent,
       // add to a subnet with internet access
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       enableExecuteCommand: true,
