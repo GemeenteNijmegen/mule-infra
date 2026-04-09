@@ -64,7 +64,7 @@ export class MuleRuntimeStack extends Stack {
       // add to a subnet with internet access
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       enableExecuteCommand: true,
-      healthCheckGracePeriod: Duration.seconds(120),
+      healthCheckGracePeriod: Duration.seconds(300),
     });
 
     // Add SSM permissions to the Task Role
