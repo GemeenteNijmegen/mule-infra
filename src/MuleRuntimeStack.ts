@@ -93,8 +93,7 @@ export class MuleRuntimeStack extends Stack {
       })],
       healthCheck: {
         path: '/health',
-        // This is the login of the web console so a 401 is fine
-        healthyHttpCodes: '200,401',
+        healthyHttpCodes: '200',
       },
     });
   }
