@@ -1,7 +1,8 @@
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_iam as iam } from 'aws-cdk-lib';
+import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_iam as iam, Duration } from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
+import { ApplicationLoadBalancer } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
@@ -51,7 +52,7 @@ export class MuleRuntimeStack extends Stack {
       protocol: ecs.Protocol.TCP,
     });
 
-    new ecs.FargateService(this, 'Service', {
+    const ecsService = new ecs.FargateService(this, 'Service', {
       cluster,
       taskDefinition,
       desiredCount: props.configuration.taskCount,
@@ -63,6 +64,7 @@ export class MuleRuntimeStack extends Stack {
       // add to a subnet with internet access
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       enableExecuteCommand: true,
+      healthCheckGracePeriod: Duration.seconds(120),
     });
 
     // Add SSM permissions to the Task Role
@@ -77,5 +79,28 @@ export class MuleRuntimeStack extends Stack {
         resources: ['*'],
       }),
     );
+
+    const lb = new ApplicationLoadBalancer(this, 'LB', {
+      vpc: vpc.vpc,
+      // create a public ip address
+      internetFacing: true,
+    });
+
+    const listener = lb.addListener('HTTPListener', {
+      port: 80,
+    });
+
+    listener.addTargets('Target', {
+      port: 80,
+      targets: [ecsService.loadBalancerTarget({
+        containerName: 'MuleRuntimeContainer',
+        containerPort: 8081,
+      })],
+      healthCheck: {
+        path: '/health',
+        // This is the login of the web console so a 401 is fine
+        healthyHttpCodes: '200,401',
+      },
+    });
   }
 }
