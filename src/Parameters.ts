@@ -32,11 +32,6 @@ export class ParameterStack extends Stack {
     Tags.of(this).add('cdkManaged', 'yes');
     Tags.of(this).add('Project', Statics.projectName);
 
-    new StringParameter(this, 'mule-server-name', {
-      stringValue: '-',
-      parameterName: Statics.ssmMuleServerName,
-    });
-
     new StringParameter(this, 'mule-anypoint-env-token', {
       stringValue: '-',
       parameterName: Statics.ssmMuleAnypointEnvToken,
