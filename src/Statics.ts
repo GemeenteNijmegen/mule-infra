@@ -8,11 +8,8 @@ export class Statics {
   /**
    * Github repository of this project
    * Used in the PipelineStack
-   * TODO make sure this is correct
    */
   static readonly githubRepository = `GemeenteNijmegen/${Statics.projectName}`;
-
-  static readonly ssmDummyParameter = `/${Statics.projectName}/dummy/parameter`;
 
   static readonly ssmMuleAnypointEnvToken = `/${Statics.projectName}/mule/anypoint-env-token`;
   static readonly secretMuleLicense = `/${Statics.projectName}/mule/license`;
