@@ -32,25 +32,30 @@ export class MuleRuntimeStack extends Stack {
     });
 
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image');
-    const secret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
+    const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
+    const clientSecret = Secret.fromSecretNameV2(this, 'MuleAnypointClientSecret', Statics.secretMuleAnypointClientSecret);
 
     const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, 'MuleRuntimeTaskDefinition', {
       cpu: 1024,
       memoryLimitMiB: 8192,
     });
     const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, '30a16f055bd8b5d039fa94b817230a590b1b10ea'),
+      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'bfc248b04cdfb89aaf2e4a6b27883ab6991358fb'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
       environment: {
-        SECRET_MULE_LICENSE_ARN: secret.secretArn,
+        SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
         SERVER_NAME: `mule-${props.configuration.branchName}-`,
       },
       secrets: {
-        ANYPOINT_ENV_TOKEN: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvToken', Statics.ssmMuleAnypointEnvToken)),
+        ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId)),
+        ANYPOINT_CLIENT_SECRET: ecs.Secret.fromSecretsManager(clientSecret),
+        ANYPOINT_ORG_ID: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId)),
+        ANYPOINT_ENV_ID: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvId', Statics.ssmMuleAnypointEnvId)),
       },
     });
 
-    secret.grantRead(taskDefinition.taskRole);
+    licenseSecret.grantRead(taskDefinition.taskRole);
+    clientSecret.grantRead(taskDefinition.obtainExecutionRole());
 
     container.addPortMappings(
       {

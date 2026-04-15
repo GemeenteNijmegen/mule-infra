@@ -11,7 +11,10 @@ export class Statics {
    */
   static readonly githubRepository = `GemeenteNijmegen/${Statics.projectName}`;
 
-  static readonly ssmMuleAnypointEnvToken = `/${Statics.projectName}/mule/anypoint-env-token`;
+  static readonly ssmMuleAnypointClientId = `/${Statics.projectName}/mule/anypoint-client-id`;
+  static readonly secretMuleAnypointClientSecret = `/${Statics.projectName}/mule/anypoint-client-security`;
+  static readonly ssmMuleAnypointOrgId = `/${Statics.projectName}/mule/anypoint-org-id`;
+  static readonly ssmMuleAnypointEnvId = `/${Statics.projectName}/mule/anypoint-env-id`;
   static readonly secretMuleLicense = `/${Statics.projectName}/mule/license`;
 
   // MARK: environments
