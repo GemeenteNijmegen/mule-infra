@@ -29,7 +29,7 @@ export class MuleRuntimeStack extends Stack {
       memoryLimitMiB: 8192,
     });
     const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, '30a16f055bd8b5d039fa94b817230a590b1b10ea'),
+      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, '3b41a83ec903f75f44235c326131dbd9234ce08d'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
       environment: {
         SECRET_MULE_LICENSE_ARN: secret.secretArn,
@@ -42,10 +42,16 @@ export class MuleRuntimeStack extends Stack {
 
     secret.grantRead(taskDefinition.taskRole);
 
-    container.addPortMappings({
-      containerPort: 8081,
-      protocol: ecs.Protocol.TCP,
-    });
+    container.addPortMappings(
+      {
+        containerPort: 8080,
+        protocol: ecs.Protocol.TCP,
+      },
+      {
+        containerPort: 8081,
+        protocol: ecs.Protocol.TCP,
+      }
+    );
 
     const ecsService = new ecs.FargateService(this, 'Service', {
       cluster,
@@ -89,10 +95,11 @@ export class MuleRuntimeStack extends Stack {
       port: 80,
       targets: [ecsService.loadBalancerTarget({
         containerName: 'MuleRuntimeContainer',
-        containerPort: 8081,
+        containerPort: 8080,
       })],
       healthCheck: {
         path: '/health',
+        port: '8081',
         healthyHttpCodes: '200',
       },
     });
