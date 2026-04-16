@@ -4,7 +4,8 @@ import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatem
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancer } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import { HostedZone } from 'aws-cdk-lib/aws-route53';
+import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
@@ -93,6 +94,15 @@ export class MuleRuntimeStack extends Stack {
       port: 443,
       certificates: [certificate],
     });
+
+    new ARecord(
+      this,
+      'a-record',
+      {
+        zone: hostedZone,
+        target: RecordTarget.fromAlias(new LoadBalancerTarget(lb)),
+      },
+    );
 
     listener.addTargets('Target', {
       port: 443,
