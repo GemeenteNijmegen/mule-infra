@@ -3,7 +3,7 @@ import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_iam as 
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
-import { ApplicationLoadBalancer } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import { ApplicationLoadBalancer, ApplicationProtocol } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -52,10 +52,16 @@ export class MuleRuntimeStack extends Stack {
 
     secret.grantRead(taskDefinition.taskRole);
 
-    container.addPortMappings({
-      containerPort: 8081,
-      protocol: ecs.Protocol.TCP,
-    });
+    container.addPortMappings(
+      {
+        containerPort: 8081,
+        protocol: ecs.Protocol.TCP,
+      },
+      {
+        containerPort: 80,
+        protocol: ecs.Protocol.TCP,
+      }
+    );
 
     const ecsService = new ecs.FargateService(this, 'Service', {
       cluster,
@@ -105,12 +111,13 @@ export class MuleRuntimeStack extends Stack {
     );
 
     listener.addTargets('Target', {
-      port: 443,
+      protocol: ApplicationProtocol.HTTP,
       targets: [ecsService.loadBalancerTarget({
         containerName: 'MuleRuntimeContainer',
-        containerPort: 8081,
+        containerPort: 80,
       })],
       healthCheck: {
+        port: '8081',
         path: '/health',
         healthyHttpCodes: '200',
       },
