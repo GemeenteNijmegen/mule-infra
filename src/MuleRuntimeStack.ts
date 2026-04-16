@@ -1,8 +1,10 @@
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_iam as iam, Duration } from 'aws-cdk-lib';
+import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancer } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import { HostedZone } from 'aws-cdk-lib/aws-route53';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
@@ -11,11 +13,18 @@ import { Statics } from './Statics';
 
 interface MuleRuntimeStackProps extends StackProps, Configurable { }
 
+
 export class MuleRuntimeStack extends Stack {
   constructor(scope: Construct, id: string, private readonly props: MuleRuntimeStackProps) {
     super(scope, id, props);
     Aspects.of(this).add(new PermissionsBoundaryAspect());
     const vpc = new GemeenteNijmegenVpc(this, 'vpc');
+
+    const hostedZone = this.importHostedzone();
+    const certificate = new Certificate(this, 'certificate', {
+      domainName: hostedZone.zoneName,
+      validation: CertificateValidation.fromDns(hostedZone),
+    });
 
     const cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
       vpc: vpc.vpc,
@@ -77,16 +86,16 @@ export class MuleRuntimeStack extends Stack {
 
     const lb = new ApplicationLoadBalancer(this, 'LB', {
       vpc: vpc.vpc,
-      // create a public ip address
       internetFacing: true,
     });
 
     const listener = lb.addListener('HTTPListener', {
-      port: 80,
+      port: 443,
+      certificates: [certificate],
     });
 
     listener.addTargets('Target', {
-      port: 80,
+      port: 443,
       targets: [ecsService.loadBalancerTarget({
         containerName: 'MuleRuntimeContainer',
         containerPort: 8081,
@@ -95,6 +104,19 @@ export class MuleRuntimeStack extends Stack {
         path: '/health',
         healthyHttpCodes: '200',
       },
+    });
+  }
+
+  private importHostedzone() {
+    return HostedZone.fromHostedZoneAttributes(this, 'hostedzone', {
+      hostedZoneId: StringParameter.valueForStringParameter(
+        this,
+        Statics.accountHostedzoneId,
+      ),
+      zoneName: StringParameter.valueForStringParameter(
+        this,
+        Statics.accountHostedzoneName,
+      ),
     });
   }
 }
