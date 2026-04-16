@@ -120,6 +120,7 @@ export class MuleRuntimeStack extends Stack {
         port: '8081',
         path: '/health',
         healthyHttpCodes: '200',
+        healthyThresholdCount: 2,
       },
     });
   }
