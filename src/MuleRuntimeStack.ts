@@ -60,7 +60,7 @@ export class MuleRuntimeStack extends Stack {
       {
         containerPort: 80,
         protocol: ecs.Protocol.TCP,
-      }
+      },
     );
 
     const ecsService = new ecs.FargateService(this, 'Service', {
@@ -114,10 +114,9 @@ export class MuleRuntimeStack extends Stack {
       protocol: ApplicationProtocol.HTTP,
       targets: [ecsService.loadBalancerTarget({
         containerName: 'MuleRuntimeContainer',
-        containerPort: 80,
+        containerPort: 8081,
       })],
       healthCheck: {
-        port: '8081',
         path: '/health',
         healthyHttpCodes: '200',
         healthyThresholdCount: 2,
