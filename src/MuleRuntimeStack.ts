@@ -23,7 +23,7 @@ export class MuleRuntimeStack extends Stack {
 
     const hostedZone = this.importHostedzone();
     const certificate = new Certificate(this, 'certificate', {
-      domainName: "*." + hostedZone.zoneName,
+      domainName: '*.' + hostedZone.zoneName,
       validation: CertificateValidation.fromDns(hostedZone),
     });
 
@@ -55,10 +55,6 @@ export class MuleRuntimeStack extends Stack {
     container.addPortMappings(
       {
         containerPort: 8081,
-        protocol: ecs.Protocol.TCP,
-      },
-      {
-        containerPort: 8080,
         protocol: ecs.Protocol.TCP,
       },
     );
@@ -107,7 +103,7 @@ export class MuleRuntimeStack extends Stack {
       {
         zone: hostedZone,
         target: RecordTarget.fromAlias(new LoadBalancerTarget(lb)),
-        recordName: "*"
+        recordName: '*',
       },
     );
 
@@ -115,10 +111,9 @@ export class MuleRuntimeStack extends Stack {
       protocol: ApplicationProtocol.HTTP,
       targets: [ecsService.loadBalancerTarget({
         containerName: 'MuleRuntimeContainer',
-        containerPort: 8080,
+        containerPort: 8081,
       })],
       healthCheck: {
-        port: "8081",
         path: '/health',
         healthyHttpCodes: '200',
         healthyThresholdCount: 2,
