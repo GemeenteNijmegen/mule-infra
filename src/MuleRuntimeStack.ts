@@ -25,7 +25,6 @@ export class MuleRuntimeStack extends Stack {
     const certificate = new Certificate(this, 'certificate', {
       domainName: "*." + hostedZone.zoneName,
       validation: CertificateValidation.fromDns(hostedZone),
-      subjectAlternativeNames: [hostedZone.zoneName]
     });
 
     const cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
