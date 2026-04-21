@@ -39,6 +39,21 @@ export interface Configuration {
    */
   criticality: Criticality;
 
+  /**
+   * Number of tasks to run
+   */
+  taskCount: number;
+
+  /**
+   * Minimum healthy percent during deployment
+   */
+  minHealthyPercent: number;
+
+  /**
+   * Maximum percent during deployment
+   */
+  maxHealthyPercent: number;
+
 }
 
 const configurations: Configuration[] = [
@@ -47,18 +62,27 @@ const configurations: Configuration[] = [
     buildEnvironment: Statics.buildEnvironment,
     deploymentEnvironment: Statics.developmentEnvironment,
     criticality: new Criticality('low'),
+    taskCount: 1,
+    minHealthyPercent: 0,
+    maxHealthyPercent: 100,
   },
   {
     branchName: 'acceptance',
     buildEnvironment: Statics.buildEnvironment,
     deploymentEnvironment: Statics.acceptanceEnvironment,
     criticality: new Criticality('medium'),
+    taskCount: 2,
+    minHealthyPercent: 100,
+    maxHealthyPercent: 200,
   },
   {
     branchName: 'main',
     buildEnvironment: Statics.buildEnvironment,
     deploymentEnvironment: Statics.productionEnvironment,
     criticality: new Criticality('high'),
+    taskCount: 2,
+    minHealthyPercent: 100,
+    maxHealthyPercent: 200,
   },
 ];
 

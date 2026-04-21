@@ -1,5 +1,6 @@
 import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import { Aspects, Stack, Stage, StageProps, Tags } from 'aws-cdk-lib';
+import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
@@ -31,10 +32,27 @@ export class ParameterStack extends Stack {
     Tags.of(this).add('cdkManaged', 'yes');
     Tags.of(this).add('Project', Statics.projectName);
 
-    new StringParameter(this, 'ssm-dummy', {
+    new StringParameter(this, 'mule-anypoint-client-id', {
       stringValue: '-',
-      parameterName: Statics.ssmDummyParameter,
+      parameterName: Statics.ssmMuleAnypointClientId,
     });
 
+    new Secret(this, 'mule-anypoint-client-secret', {
+      secretName: Statics.secretMuleAnypointClientSecret,
+    });
+
+    new StringParameter(this, 'mule-anypoint-org-id', {
+      stringValue: '-',
+      parameterName: Statics.ssmMuleAnypointOrgId,
+    });
+
+    new StringParameter(this, 'mule-anypoint-env-id', {
+      stringValue: '-',
+      parameterName: Statics.ssmMuleAnypointEnvId,
+    });
+
+    new Secret(this, 'mule-license', {
+      secretName: Statics.secretMuleLicense,
+    });
   }
 }
