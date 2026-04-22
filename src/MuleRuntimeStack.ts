@@ -44,7 +44,7 @@ export class MuleRuntimeStack extends Stack {
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
       environment: {
         SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
-        SERVER_NAME: `mule-${props.configuration.branchName}-`,
+        SERVER_NAME: `mule-${props.configuration.branchName}`,
       },
       secrets: {
         ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId)),
