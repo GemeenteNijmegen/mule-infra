@@ -16,7 +16,13 @@ Every mule AWS account requires the license binaries to be in the secrets manage
 
  aws secretsmanager put-secret-value --secret-id <<arn>> --secret-binary fileb:///path/to/license.lic
 
-2. Navigate to the Parameter Store and set the anypoint env token and server name (from the anypoint manager). This token expires every day and should be refreshed before doing a deploy of a new container.
+2. Configure the required Anypoint Platform credentials. Set the following as SSM Parameters:
+   - `ANYPOINT_CLIENT_ID=your_client_id_here`
+   - `ANYPOINT_ORG_ID=your_org_id_here`
+   - `ANYPOINT_ENV_ID=your_env_id_here`
+
+   Set the following as a Secret in AWS Secrets Manager:
+   - `ANYPOINT_CLIENT_SECRET=your_client_secret_here`
 
 ## Infrastructure
 
@@ -28,27 +34,12 @@ When you push a change to the main branch, the following happens:
 - In the build account, the docker image is present in ECR.
 - The stack is deployed to AWS (for ssm and secrets manager creation).
 
-**Configuring the anypoint studio token**:
-- Navigate to [mulesoft Anypoint Platform eu1](https://eu1.anypoint.mulesoft.com/login/) -> runtime manager
-    - Click on "Servers" -> "Add server".
-    - Name doesn't matter, the server will register itself with a server name based on the environment name.
-    - Copy the anypoint env token and set it in the SSM Parameter Store.
-- You can close the popup.
-
-**Initially registering the server**:
+**Registering the server**:
+Registration now works with the mule cli and is handled purely in the docker entrypoint. No need for manual steps for server registration.
 - Fargate pulls the image from ECR.
-    - The secret is read from AWS Secrets Manager.
-    - The anypoint env token is read from AWS SSM Parameter Store.
-    - amc_setup is run from the entrypoint.sh script.
+    - The `ANYPOINT_CLIENT_SECRET` is read from AWS Secrets Manager.
+    - The `ANYPOINT_CLIENT_ID`, `ANYPOINT_ORG_ID`, and `ANYPOINT_ENV_ID` are read from AWS SSM Parameter Store.
+    - The server registration is executed automatically using the `anypoint-cli-v4` in the `entrypoint.sh` script.
         - The file `${MULE_HOME}/conf/mule-agent.yml` is generated. This file is regenerated every deploy. If you need to 
-        change the content of this file, change the arguments of amc_setup in the Dockerfile.
+        change the content of this file, change the arguments of the amc setup command in the Docker image.
 - The service is updated.
-
-
-## Persistant data
-
-Several files should be persistant. Most importantly:
-- the license file. This is stored in the secret manager.
-- certificates
-- applications (otherwise all applications are downloaded and installed every deploy)
-- mule application logs (control plane logs are stored in cloudwatch)
