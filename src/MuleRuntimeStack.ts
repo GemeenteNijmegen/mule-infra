@@ -40,7 +40,7 @@ export class MuleRuntimeStack extends Stack {
       memoryLimitMiB: 8192,
     });
     const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, '5aa10f2273a73ce558cd31d8ccbf9ca38006562c'),
+      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'f0ad0f339f790811efebd0d23970fecf02221120'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
       environment: {
         SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
