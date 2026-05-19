@@ -1,5 +1,5 @@
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_iam as iam, Duration } from 'aws-cdk-lib';
+import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, Duration } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
@@ -41,11 +41,11 @@ export class MuleRuntimeStack extends Stack {
       memoryLimitMiB: 8192,
     });
     const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, '5aa10f2273a73ce558cd31d8ccbf9ca38006562c'),
+      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'f7acea5dec4796477a49a0d580d9902d815f8872'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
       environment: {
         SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
-        SERVER_NAME: `mule-${props.configuration.branchName}-`,
+        SERVER_NAME: `mule-${props.configuration.branchName}`,
       },
       secrets: {
         ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId)),
@@ -76,22 +76,8 @@ export class MuleRuntimeStack extends Stack {
       availabilityZoneRebalancing: ecs.AvailabilityZoneRebalancing.DISABLED,
       // add to a subnet with internet access
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-      enableExecuteCommand: true,
       healthCheckGracePeriod: Duration.seconds(300),
     });
-
-    // Add SSM permissions to the Task Role
-    taskDefinition.taskRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        actions: [
-          'ssmmessages:CreateControlChannel',
-          'ssmmessages:CreateDataChannel',
-          'ssmmessages:OpenControlChannel',
-          'ssmmessages:OpenDataChannel',
-        ],
-        resources: ['*'],
-      }),
-    );
 
     const lb = new ApplicationLoadBalancer(this, 'LB', {
       vpc: vpc.vpc,
