@@ -90,7 +90,7 @@ export class MuleRuntimeStack extends Stack {
       mutualAuthentication: {
         mutualAuthenticationMode: MutualAuthenticationMode.VERIFY,
         trustStore: new TrustStore(this, "trustStore", {
-          bucket: Bucket.fromBucketName(this, "trustStoreBucket", Statics.ssmALBtruststore),
+          bucket: Bucket.fromBucketName(this, "trustStoreBucket", StringParameter.valueForStringParameter(this, Statics.ssmALBtruststore)),
           key: "truststore.pem",
         }),
       },
