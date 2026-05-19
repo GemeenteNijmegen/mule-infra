@@ -3,7 +3,7 @@ import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_iam as 
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
-import { ApplicationLoadBalancer, ApplicationProtocol } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import { ApplicationLoadBalancer, ApplicationProtocol, MutualAuthenticationMode, TrustStore } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -11,6 +11,7 @@ import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
+import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3';
 
 interface MuleRuntimeStackProps extends StackProps, Configurable { }
 
@@ -97,9 +98,22 @@ export class MuleRuntimeStack extends Stack {
       internetFacing: true,
     });
 
+    const trustStoreBucket = new Bucket(this, "trustStoreBucket",{
+      enforceSSL: true,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      versioned: true,
+    })
+
     const listener = lb.addListener('HTTPListener', {
       port: 443,
       certificates: [certificate],
+      mutualAuthentication: {
+        mutualAuthenticationMode: MutualAuthenticationMode.VERIFY,
+        trustStore: new TrustStore(this, "trustStore", {
+          bucket: trustStoreBucket,
+          key: "truststore.pem",
+        }),
+      },
     });
 
     new ARecord(
