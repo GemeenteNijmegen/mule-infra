@@ -6,12 +6,12 @@ import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancer, ApplicationProtocol, MutualAuthenticationMode, TrustStore } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
-import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3';
 
 interface MuleRuntimeStackProps extends StackProps, Configurable { }
 
@@ -89,9 +89,9 @@ export class MuleRuntimeStack extends Stack {
       certificates: [certificate],
       mutualAuthentication: {
         mutualAuthenticationMode: MutualAuthenticationMode.VERIFY,
-        trustStore: new TrustStore(this, "trustStore", {
-          bucket: Bucket.fromBucketName(this, "trustStoreBucket", StringParameter.valueForStringParameter(this, Statics.ssmALBtruststore)),
-          key: "truststore.pem",
+        trustStore: new TrustStore(this, 'trustStore', {
+          bucket: Bucket.fromBucketName(this, 'trustStoreBucket', StringParameter.valueForStringParameter(this, Statics.ssmALBtruststore)),
+          key: 'truststore.pem',
         }),
       },
     });

@@ -1,11 +1,11 @@
 import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import { Aspects, Stack, Stage, StageProps, Tags } from 'aws-cdk-lib';
+import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
-import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3';
 
 export interface ParameterStageProps extends StageProps, Configurable { }
 
@@ -56,7 +56,7 @@ export class ParameterStack extends Stack {
       secretName: Statics.secretMuleLicense,
     });
 
-    const trustStoreBucket = new Bucket(this, "trustStoreBucket",{
+    const trustStoreBucket = new Bucket(this, 'trustStoreBucket', {
       enforceSSL: true,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       versioned: true,
