@@ -5,6 +5,7 @@ import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
+import { BlockPublicAccess, Bucket } from 'aws-cdk-lib/aws-s3';
 
 export interface ParameterStageProps extends StageProps, Configurable { }
 
@@ -53,6 +54,17 @@ export class ParameterStack extends Stack {
 
     new Secret(this, 'mule-license', {
       secretName: Statics.secretMuleLicense,
+    });
+
+    const trustStoreBucket = new Bucket(this, "trustStoreBucket",{
+      enforceSSL: true,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      versioned: true,
+    });
+
+    new StringParameter(this, 'ALB-truststore', {
+      stringValue: trustStoreBucket.bucketName,
+      parameterName: Statics.ssmALBtruststore,
     });
   }
 }

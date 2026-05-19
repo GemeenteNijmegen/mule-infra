@@ -84,19 +84,13 @@ export class MuleRuntimeStack extends Stack {
       internetFacing: true,
     });
 
-    const trustStoreBucket = new Bucket(this, "trustStoreBucket",{
-      enforceSSL: true,
-      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-      versioned: true,
-    })
-
     const listener = lb.addListener('HTTPListener', {
       port: 443,
       certificates: [certificate],
       mutualAuthentication: {
         mutualAuthenticationMode: MutualAuthenticationMode.VERIFY,
         trustStore: new TrustStore(this, "trustStore", {
-          bucket: trustStoreBucket,
+          bucket: Bucket.fromBucketName(this, "trustStoreBucket", Statics.ssmALBtruststore),
           key: "truststore.pem",
         }),
       },
