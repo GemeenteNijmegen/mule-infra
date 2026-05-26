@@ -66,5 +66,14 @@ export class ParameterStack extends Stack {
       stringValue: trustStoreBucket.bucketName,
       parameterName: Statics.ssmALBtruststore,
     });
+
+    new Secret(this, 'mule-truststore', {
+      secretName: Statics.secretMuleTrustStore,
+    });
+
+    new Secret(this, 'mule-keystore', {
+      secretName: Statics.secretMuleKeyStore,
+    });
+
   }
 }

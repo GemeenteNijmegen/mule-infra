@@ -43,5 +43,7 @@ export class Statics {
   static readonly accountHostedzoneName = '/gemeente-nijmegen/account/hostedzone/name';
   static readonly accountHostedzoneId = '/gemeente-nijmegen/account/hostedzone/id';
   static readonly ssmALBtruststore = `/${Statics.projectName}/alb/truststore`;
+  static readonly secretMuleTrustStore = `/${Statics.projectName}/mule/truststore`;
+  static readonly secretMuleKeyStore = `/${Statics.projectName}/mule/keystore`;
 
 }
