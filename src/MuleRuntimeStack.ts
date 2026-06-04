@@ -37,6 +37,8 @@ export class MuleRuntimeStack extends Stack {
     const clientSecret = Secret.fromSecretNameV2(this, 'MuleAnypointClientSecret', Statics.secretMuleAnypointClientSecret);
     const trustStore = Secret.fromSecretNameV2(this, 'MuleTrustStore', Statics.secretMuleTrustStore);
     const keyStore = Secret.fromSecretNameV2(this, 'MuleKeyStore', Statics.secretMuleKeyStore);
+    const keystorePassword = Secret.fromSecretNameV2(this, 'MuleKeystorePassword', Statics.secretMuleKeystorePassword);
+    const truststorePassword = Secret.fromSecretNameV2(this, 'MuleTruststorePassword', Statics.secretMuleTruststorePassword);
 
     const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, 'MuleRuntimeTaskDefinition', {
       cpu: 1024,
@@ -56,6 +58,8 @@ export class MuleRuntimeStack extends Stack {
         ANYPOINT_CLIENT_SECRET: ecs.Secret.fromSecretsManager(clientSecret),
         ANYPOINT_ORG_ID: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId)),
         ANYPOINT_ENV_ID: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvId', Statics.ssmMuleAnypointEnvId)),
+        MULE_KEYSTORE_PASSWORD: ecs.Secret.fromSecretsManager(keystorePassword),
+        MULE_TRUSTSTORE_PASSWORD: ecs.Secret.fromSecretsManager(truststorePassword),
       },
     });
 
@@ -63,6 +67,8 @@ export class MuleRuntimeStack extends Stack {
     trustStore.grantRead(taskDefinition.taskRole);
     keyStore.grantRead(taskDefinition.taskRole);
     clientSecret.grantRead(taskDefinition.obtainExecutionRole());
+    truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
+    keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
 
     container.addPortMappings(
       {
