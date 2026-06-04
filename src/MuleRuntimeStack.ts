@@ -158,11 +158,11 @@ export class MuleRuntimeStack extends Stack {
       description: 'Route53 Resolver outbound endpoint',
     });
     outboundSg.addEgressRule(
-      ec2.Peer.ipv4('10.16.0.10'),
+      ec2.Peer.ipv4('10.16.0.10/32'),
       ec2.Port.udp(53),
     );
     outboundSg.addEgressRule(
-      ec2.Peer.ipv4('10.16.0.20'),
+      ec2.Peer.ipv4('10.16.0.20/32'),
       ec2.Port.udp(53),
     );
 
