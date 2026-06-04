@@ -1,11 +1,13 @@
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, Duration } from 'aws-cdk-lib';
+import { Aspects, Duration, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
+import { IVpc } from 'aws-cdk-lib/aws-ec2';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancer, ApplicationProtocol, MutualAuthenticationMode, TrustStore } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
+import { CfnResolverEndpoint, CfnResolverRule, CfnResolverRuleAssociation } from 'aws-cdk-lib/aws-route53resolver';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
@@ -27,6 +29,10 @@ export class MuleRuntimeStack extends Stack {
       domainName: '*.' + hostedZone.zoneName,
       validation: CertificateValidation.fromDns(hostedZone),
     });
+
+
+    // Make karelstad.nl resolve in this VPC
+    this.onPremDnsRouting(vpc.vpc);
 
     const cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
       vpc: vpc.vpc,
@@ -142,6 +148,49 @@ export class MuleRuntimeStack extends Stack {
         this,
         Statics.accountHostedzoneName,
       ),
+    });
+  }
+
+  private onPremDnsRouting(vpc: IVpc) {
+
+    const outboundSg = new ec2.SecurityGroup(this, 'OutboundResolverSg', {
+      vpc,
+      description: 'Route53 Resolver outbound endpoint',
+    });
+    outboundSg.addEgressRule(
+      ec2.Peer.ipv4('10.16.0.10/32'),
+      ec2.Port.udp(53),
+    );
+    outboundSg.addEgressRule(
+      ec2.Peer.ipv4('10.16.0.20/32'),
+      ec2.Port.udp(53),
+    );
+
+    // Outbound endpoint - one ENI per AZ
+    const outboundEndpoint = new CfnResolverEndpoint(this, 'OutboundEndpoint', {
+      direction: 'OUTBOUND',
+      securityGroupIds: [outboundSg.securityGroupId],
+      ipAddresses: [
+        { subnetId: vpc.privateSubnets[0].subnetId },
+        { subnetId: vpc.privateSubnets[1].subnetId },
+      ],
+    });
+
+    // Forwarding rule - send karelstad.nl queries to on-prem DNS
+    const forwardingRule = new CfnResolverRule(this, 'ForwardIrvnRule', {
+      domainName: 'karelstad.nl',
+      ruleType: 'FORWARD',
+      resolverEndpointId: outboundEndpoint.attrResolverEndpointId,
+      targetIps: [
+        { ip: '10.16.0.10', port: '53' },
+        { ip: '10.16.0.20', port: '53' },
+      ],
+    });
+
+    // Associate the rule with the VPC
+    new CfnResolverRuleAssociation(this, 'ForwardIrvnRuleAssoc', {
+      resolverRuleId: forwardingRule.attrResolverRuleId,
+      vpcId: vpc.vpcId,
     });
   }
 }
