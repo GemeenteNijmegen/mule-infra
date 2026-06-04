@@ -60,6 +60,8 @@ export class MuleRuntimeStack extends Stack {
     });
 
     licenseSecret.grantRead(taskDefinition.taskRole);
+    trustStore.grantRead(taskDefinition.taskRole);
+    keyStore.grantRead(taskDefinition.taskRole);
     clientSecret.grantRead(taskDefinition.obtainExecutionRole());
 
     container.addPortMappings(
