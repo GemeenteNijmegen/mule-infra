@@ -159,6 +159,9 @@ export class MuleRuntimeStack extends Stack {
       }
       previousService = ecsService;
 
+      // Allow the ECS service to connect to the EFS file system
+      fileSystem.connections.allowDefaultPortFrom(ecsService.connections);
+
       loadBalancerTargets.push(ecsService.loadBalancerTarget({
         containerName: 'MuleRuntimeContainer',
         containerPort: 8081,
