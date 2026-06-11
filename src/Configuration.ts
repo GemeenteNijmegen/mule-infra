@@ -72,8 +72,8 @@ const configurations: Configuration[] = [
     deploymentEnvironment: Statics.acceptanceEnvironment,
     criticality: new Criticality('medium'),
     taskCount: 2,
-    minHealthyPercent: 100,
-    maxHealthyPercent: 200,
+    minHealthyPercent: 0,
+    maxHealthyPercent: 100,
   },
   {
     branchName: 'main',
@@ -81,8 +81,8 @@ const configurations: Configuration[] = [
     deploymentEnvironment: Statics.productionEnvironment,
     criticality: new Criticality('high'),
     taskCount: 2,
-    minHealthyPercent: 100,
-    maxHealthyPercent: 200,
+    minHealthyPercent: 0,
+    maxHealthyPercent: 100,
   },
 ];
 
