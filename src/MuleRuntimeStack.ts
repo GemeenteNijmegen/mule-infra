@@ -1,11 +1,12 @@
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, Duration } from 'aws-cdk-lib';
+import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_efs as efs, aws_iam as iam, Duration } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
-import { ApplicationLoadBalancer, ApplicationProtocol } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import { ApplicationLoadBalancer, ApplicationProtocol, MutualAuthenticationMode, TrustStore } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
@@ -21,6 +22,14 @@ export class MuleRuntimeStack extends Stack {
     Aspects.of(this).add(new PermissionsBoundaryAspect());
     const vpc = new GemeenteNijmegenVpc(this, 'vpc');
 
+    const fileSystem = new efs.FileSystem(this, 'MuleEfs', {
+      vpc: vpc.vpc,
+      encrypted: true,
+      lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
+      performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
+      outOfInfrequentAccessPolicy: efs.OutOfInfrequentAccessPolicy.AFTER_1_ACCESS,
+    });
+
     const hostedZone = this.importHostedzone();
     const certificate = new Certificate(this, 'certificate', {
       domainName: '*.' + hostedZone.zoneName,
@@ -34,49 +43,130 @@ export class MuleRuntimeStack extends Stack {
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image');
     const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
     const clientSecret = Secret.fromSecretNameV2(this, 'MuleAnypointClientSecret', Statics.secretMuleAnypointClientSecret);
+    const trustStore = Secret.fromSecretNameV2(this, 'MuleTrustStore', Statics.secretMuleTrustStore);
+    const keyStore = Secret.fromSecretNameV2(this, 'MuleKeyStore', Statics.secretMuleKeyStore);
+    const keystorePassword = Secret.fromSecretNameV2(this, 'MuleKeystorePassword', Statics.secretMuleKeystorePassword);
+    const truststorePassword = Secret.fromSecretNameV2(this, 'MuleTruststorePassword', Statics.secretMuleTruststorePassword);
 
-    const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, 'MuleRuntimeTaskDefinition', {
-      cpu: 1024,
-      memoryLimitMiB: 8192,
-    });
-    const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'f0ad0f339f790811efebd0d23970fecf02221120'),
-      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'mule-runtime' }),
-      environment: {
-        SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
-        SERVER_NAME: `mule-${props.configuration.branchName}`,
-      },
-      secrets: {
-        ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId)),
-        ANYPOINT_CLIENT_SECRET: ecs.Secret.fromSecretsManager(clientSecret),
-        ANYPOINT_ORG_ID: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId)),
-        ANYPOINT_ENV_ID: ecs.Secret.fromSsmParameter(StringParameter.fromStringParameterName(this, 'MuleAnypointEnvId', Statics.ssmMuleAnypointEnvId)),
-      },
-    });
+    const clientIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId);
+    const orgIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId);
+    const envIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointEnvId', Statics.ssmMuleAnypointEnvId);
 
-    licenseSecret.grantRead(taskDefinition.taskRole);
-    clientSecret.grantRead(taskDefinition.obtainExecutionRole());
+    const loadBalancerTargets = [];
+    let previousService: ecs.FargateService | undefined;
 
-    container.addPortMappings(
-      {
+    for (let i = 1; i <= props.configuration.taskCount; i++) {
+      const accessPoint = new efs.AccessPoint(this, `MuleEfsAccessPoint${i}`, {
+        fileSystem,
+        path: `/mule-data-${i}`,
+        createAcl: {
+          ownerUid: '1000',
+          ownerGid: '1000',
+          permissions: '755',
+        },
+        posixUser: {
+          uid: '1000',
+          gid: '1000',
+        },
+      });
+
+      const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, `MuleRuntimeTaskDefinition${i}`, {
+        cpu: 1024,
+        memoryLimitMiB: 8192,
+      });
+
+      taskDefinition.addVolume({
+        name: 'mule-efs-volume',
+        efsVolumeConfiguration: {
+          fileSystemId: fileSystem.fileSystemId,
+          transitEncryption: 'ENABLED',
+          authorizationConfig: {
+            accessPointId: accessPoint.accessPointId,
+            iam: 'ENABLED',
+          },
+        },
+      });
+
+      taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+        actions: [
+          'elasticfilesystem:ClientMount',
+          'elasticfilesystem:ClientWrite',
+          'elasticfilesystem:ClientRootAccess',
+        ],
+        resources: [fileSystem.fileSystemArn],
+        conditions: {
+          StringEquals: {
+            'elasticfilesystem:AccessPointArn': accessPoint.accessPointArn,
+          },
+        },
+      }));
+
+      const container = taskDefinition.addContainer('MuleRuntimeContainer', {
+        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'd26e7b849fba151a63a7662cbe4db03d5060be58'),
+        logging: ecs.LogDrivers.awsLogs({ streamPrefix: `mule-runtime-${i}` }),
+        environment: {
+          SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
+          SERVER_NAME: `MULE-${props.configuration.branchName.toUpperCase()}-${i}`,
+          MULE_TRUSTSTORE: trustStore.secretArn,
+          MULE_KEYSTORE: keyStore.secretArn,
+        },
+        secrets: {
+          ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
+          ANYPOINT_CLIENT_SECRET: ecs.Secret.fromSecretsManager(clientSecret),
+          ANYPOINT_ORG_ID: ecs.Secret.fromSsmParameter(orgIdParam),
+          ANYPOINT_ENV_ID: ecs.Secret.fromSsmParameter(envIdParam),
+          MULE_KEYSTORE_PASSWORD: ecs.Secret.fromSecretsManager(keystorePassword),
+          MULE_TRUSTSTORE_PASSWORD: ecs.Secret.fromSecretsManager(truststorePassword),
+        },
+      });
+
+      licenseSecret.grantRead(taskDefinition.taskRole);
+      trustStore.grantRead(taskDefinition.taskRole);
+      keyStore.grantRead(taskDefinition.taskRole);
+      clientSecret.grantRead(taskDefinition.obtainExecutionRole());
+      truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
+      keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
+
+      container.addPortMappings(
+        {
+          containerPort: 8081,
+          protocol: ecs.Protocol.TCP,
+        },
+      );
+
+      container.addMountPoints({
+        containerPath: '/efs-data',
+        readOnly: false,
+        sourceVolume: 'mule-efs-volume',
+      });
+
+      const ecsService = new ecs.FargateService(this, `Service${i}`, {
+        cluster,
+        taskDefinition,
+        desiredCount: 1,
+        minHealthyPercent: props.configuration.minHealthyPercent,
+        maxHealthyPercent: props.configuration.maxHealthyPercent,
+        // Disabled so we can configure a maxHealthyPercent of 100 for test.
+        // Perhaps we can conditionally enable this for acc/prd.
+        availabilityZoneRebalancing: ecs.AvailabilityZoneRebalancing.DISABLED,
+        // add to a subnet with internet access
+        vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        healthCheckGracePeriod: Duration.seconds(300),
+      });
+
+      if (previousService) {
+        ecsService.node.addDependency(previousService);
+      }
+      previousService = ecsService;
+
+      // Allow the ECS service to connect to the EFS file system
+      fileSystem.connections.allowDefaultPortFrom(ecsService.connections);
+
+      loadBalancerTargets.push(ecsService.loadBalancerTarget({
+        containerName: 'MuleRuntimeContainer',
         containerPort: 8081,
-        protocol: ecs.Protocol.TCP,
-      },
-    );
-
-    const ecsService = new ecs.FargateService(this, 'Service', {
-      cluster,
-      taskDefinition,
-      desiredCount: props.configuration.taskCount,
-      minHealthyPercent: props.configuration.minHealthyPercent,
-      maxHealthyPercent: props.configuration.maxHealthyPercent,
-      // Disabled so we can configure a maxHealthyPercent of 100 for test.
-      // Perhaps we can conditionally enable this for acc/prd.
-      availabilityZoneRebalancing: ecs.AvailabilityZoneRebalancing.DISABLED,
-      // add to a subnet with internet access
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-      healthCheckGracePeriod: Duration.seconds(300),
-    });
+      }));
+    }
 
     const lb = new ApplicationLoadBalancer(this, 'LB', {
       vpc: vpc.vpc,
@@ -86,6 +176,13 @@ export class MuleRuntimeStack extends Stack {
     const listener = lb.addListener('HTTPListener', {
       port: 443,
       certificates: [certificate],
+      mutualAuthentication: {
+        mutualAuthenticationMode: MutualAuthenticationMode.VERIFY,
+        trustStore: new TrustStore(this, 'trustStore', {
+          bucket: Bucket.fromBucketName(this, 'trustStoreBucket', StringParameter.valueForStringParameter(this, Statics.ssmALBtruststore)),
+          key: 'truststore.pem',
+        }),
+      },
     });
 
     new ARecord(
@@ -100,10 +197,7 @@ export class MuleRuntimeStack extends Stack {
 
     listener.addTargets('Target', {
       protocol: ApplicationProtocol.HTTP,
-      targets: [ecsService.loadBalancerTarget({
-        containerName: 'MuleRuntimeContainer',
-        containerPort: 8081,
-      })],
+      targets: loadBalancerTargets,
       healthCheck: {
         path: '/health',
         healthyHttpCodes: '200',

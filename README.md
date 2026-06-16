@@ -8,13 +8,21 @@ It pulls the docker image from ECR from the gn-build account, and runs it in ECS
 
 The repo with the docker image is [here](https://github.com/GemeenteNijmegen/mule-docker-image).
 
+Update the docker image version if there is an update in docker image
+ - check line 48 of MuleRuntimeStack (https://github.com/GemeenteNijmegen/mule-infra/blob/development/src/MuleRuntimeStack.ts#L48)
+
 ## Manual steps
 
-Every mule AWS account requires the license binaries to be in the secrets manager.
+Every Mule AWS account requires the license binaries, trust/keystore.jks (for Mule), and passwords of trsust/keystore.jks to be stored in the Secrets Manager.
 
-1. To set the license secret:
+1. Update the value for secrets manager (each environments):
+ - license secret, truststore.jks and keystore.jks:
 
- aws secretsmanager put-secret-value --secret-id <<arn>> --secret-binary fileb:///path/to/license.lic
+   - `aws secretsmanager put-secret-value --secret-id '<<arn>>' --secret-binary fileb:///path/to/file --region eu-central-1`
+
+ - truststorepassword and keystorepassword:
+
+   - `aws secretsmanager put-secret-value --secret-id '<<arn>>' --secret-string "your_secret" --region eu-central-1`
 
 2. Configure the required Anypoint Platform credentials. Set the following as SSM Parameters:
    - `ANYPOINT_CLIENT_ID=your_client_id_here`
@@ -23,6 +31,8 @@ Every mule AWS account requires the license binaries to be in the secrets manage
 
    Set the following as a Secret in AWS Secrets Manager:
    - `ANYPOINT_CLIENT_SECRET=your_client_secret_here`
+
+Also, every Mule AWS account requires the truststore.pem (for ALB) to be stored in the S3 bucket. 
 
 ## Infrastructure
 
