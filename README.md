@@ -32,7 +32,7 @@ Every Mule AWS account requires the license binaries, trust/keystore.jks (for Mu
    Set the following as a Secret in AWS Secrets Manager:
    - `ANYPOINT_CLIENT_SECRET=your_client_secret_here`
 
-Also, every Mule AWS account requires the truststore.pem (for ALB) to be stored in the S3 bucket. 
+**Also, every Mule AWS account requires the truststore.pem (for ALB) to be stored in the S3 bucket with public key of certificates. If the .pem is changed, the it has to be replaced with new version. after that the truststore in EC2 has to be replaced with new version.** 
 
 ## Infrastructure
 
