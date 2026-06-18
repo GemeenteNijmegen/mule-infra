@@ -102,11 +102,11 @@ export class MuleRuntimeStack extends Stack {
       }));
 
       const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'd26e7b849fba151a63a7662cbe4db03d5060be58'),
+        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'c799bd15edd0a6900481be61fa7297e8c5f1a88f'),
         logging: ecs.LogDrivers.awsLogs({ streamPrefix: `mule-runtime-${i}` }),
         environment: {
           SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
-          SERVER_NAME: `MULE-${props.configuration.branchName.toUpperCase()}-${i}`,
+          SERVER_NAME: `mule-${props.configuration.branchName.toLowerCase()}-${i}`,
           MULE_TRUSTSTORE: trustStore.secretArn,
           MULE_KEYSTORE: keyStore.secretArn,
         },
@@ -152,6 +152,7 @@ export class MuleRuntimeStack extends Stack {
         // add to a subnet with internet access
         vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
         healthCheckGracePeriod: Duration.seconds(300),
+        enableExecuteCommand: true,
       });
 
       if (previousService) {
