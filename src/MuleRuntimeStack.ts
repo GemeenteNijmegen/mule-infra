@@ -106,7 +106,7 @@ export class MuleRuntimeStack extends Stack {
         logging: ecs.LogDrivers.awsLogs({ streamPrefix: `mule-runtime-${i}` }),
         environment: {
           SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
-          SERVER_NAME: `MULE-${props.configuration.branchName.toUpperCase()}-${i}`,
+          SERVER_NAME: `MULE-${props.configuration.branchName.toLowerCase()}-${i}`,
           MULE_TRUSTSTORE: trustStore.secretArn,
           MULE_KEYSTORE: keyStore.secretArn,
         },
