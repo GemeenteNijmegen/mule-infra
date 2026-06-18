@@ -179,7 +179,7 @@ export class MuleRuntimeStack extends Stack {
       certificates: [certificate],
       mutualAuthentication: {
         mutualAuthenticationMode: MutualAuthenticationMode.VERIFY,
-        trustStore: new TrustStore(this, 'trustStore', {
+        trustStore: new TrustStore(this, 'trustStore-ec2', {
           bucket: Bucket.fromBucketName(this, 'trustStoreBucket', StringParameter.valueForStringParameter(this, Statics.ssmALBtruststore)),
           key: 'truststore.pem',
         }),
