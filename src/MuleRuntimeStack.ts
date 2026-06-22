@@ -22,7 +22,8 @@ export class MuleRuntimeStack extends Stack {
     Aspects.of(this).add(new PermissionsBoundaryAspect());
     const vpc = new GemeenteNijmegenVpc(this, 'vpc');
 
-    const fileSystem = new efs.FileSystem(this, 'MuleEfs', {
+    // renamed to MuleEfsClean to remove old NFS and start over due to mount state.
+    const fileSystem = new efs.FileSystem(this, 'MuleEfsClean', {
       vpc: vpc.vpc,
       encrypted: true,
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
