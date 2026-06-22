@@ -22,7 +22,8 @@ export class MuleRuntimeStack extends Stack {
     Aspects.of(this).add(new PermissionsBoundaryAspect());
     const vpc = new GemeenteNijmegenVpc(this, 'vpc');
 
-    const fileSystem = new efs.FileSystem(this, 'MuleEfs', {
+    // renamed to MuleEfsClean to remove old NFS and start over due to mount state.
+    const fileSystem = new efs.FileSystem(this, 'MuleEfsClean', {
       vpc: vpc.vpc,
       encrypted: true,
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
@@ -102,7 +103,7 @@ export class MuleRuntimeStack extends Stack {
       }));
 
       const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'c799bd15edd0a6900481be61fa7297e8c5f1a88f'),
+        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'de1b2ea256fc71899efecff4b500d003b39d2e73'),
         logging: ecs.LogDrivers.awsLogs({ streamPrefix: `mule-runtime-${i}` }),
         environment: {
           SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
