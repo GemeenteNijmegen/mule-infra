@@ -55,6 +55,11 @@ export class MuleRuntimeStack extends Stack {
     const loadBalancerTargets = [];
     let previousService: ecs.FargateService | undefined;
 
+    // We iterate based on the taskCount defined in the configuration to create individual ECS tasks.
+    // This allows us to assign a predictable, incremental server name and dedicated EFS path 
+    // (e.g., mule-acceptance-1, mule-acceptance-2) to each container.
+    // A stable EFS mount is crucial because it persists installed applications and the mule-agent.yml file across container restarts.
+    // Preserving the mule-agent.yml is required to maintain the server's registration and connectivity with Anypoint Runtime Manager.
     for (let i = 1; i <= props.configuration.taskCount; i++) {
       const accessPoint = new efs.AccessPoint(this, `MuleEfsAccessPoint${i}`, {
         fileSystem,
