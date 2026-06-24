@@ -71,7 +71,7 @@ const configurations: Configuration[] = [
     buildEnvironment: Statics.buildEnvironment,
     deploymentEnvironment: Statics.developmentEnvironment,
     criticality: new Criticality('low'),
-    taskCount: 2,
+    taskCount: 0,
     minHealthyPercent: 0,
     maxHealthyPercent: 100,
     cpu: 1024,
