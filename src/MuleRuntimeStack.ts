@@ -40,7 +40,7 @@ export class MuleRuntimeStack extends Stack {
       vpc: vpc.vpc,
     });
 
-    const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image');
+    const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
     const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
     const clientSecret = Secret.fromSecretNameV2(this, 'MuleAnypointClientSecret', Statics.secretMuleAnypointClientSecret);
     const trustStore = Secret.fromSecretNameV2(this, 'MuleTrustStore', Statics.secretMuleTrustStore);
