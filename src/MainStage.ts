@@ -8,7 +8,6 @@ interface MainStageProps extends StageProps, Configurable { }
 
 /**
  * Main cdk app stage
- * TODO you probably want to rename this stage
  */
 export class MainStage extends Stage {
 
@@ -18,9 +17,8 @@ export class MainStage extends Stage {
 
     /**
      * Main stack of this project
-     * TODO you probably want to rename this stack
      */
-    new MuleRuntimeStack(this, 'stack', { // Translates to mijn-services-stack
+    new MuleRuntimeStack(this, 'stack', {
       env: props.configuration.deploymentEnvironment,
       configuration: props.configuration,
     });

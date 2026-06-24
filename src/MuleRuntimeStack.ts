@@ -55,7 +55,16 @@ export class MuleRuntimeStack extends Stack {
     const loadBalancerTargets = [];
     let previousService: ecs.FargateService | undefined;
 
-    for (let i = 1; i <= props.configuration.taskCount; i++) {
+    // We iterate based on the taskCount defined in the configuration to create individual ECS services.
+    // If taskCount is 0 (e.g. in development), we still iterate at least once to ensure the
+    // FargateService is provisioned in AWS. Its desiredCount will be set to 0, allowing it to
+    // be scaled up manually via the AWS Console when needed.
+    // This per-service approach allows us to assign a predictable, incremental server name and
+    // dedicated EFS path (e.g., mule-acceptance-1, mule-acceptance-2) to each container.
+    // A stable EFS mount is crucial because it persists installed applications and the mule-agent.yml file across container restarts.
+    // Preserving the mule-agent.yml is required to maintain the server's registration and connectivity with Anypoint Runtime Manager.
+    const loopCount = Math.max(1, props.configuration.taskCount);
+    for (let i = 1; i <= loopCount; i++) {
       const accessPoint = new efs.AccessPoint(this, `MuleEfsAccessPoint${i}`, {
         fileSystem,
         path: `/mule-data-${i}`,
@@ -71,8 +80,8 @@ export class MuleRuntimeStack extends Stack {
       });
 
       const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, `MuleRuntimeTaskDefinition${i}`, {
-        cpu: 1024,
-        memoryLimitMiB: 8192,
+        cpu: props.configuration.cpu,
+        memoryLimitMiB: props.configuration.memoryLimitMiB,
       });
 
       taskDefinition.addVolume({
@@ -143,7 +152,7 @@ export class MuleRuntimeStack extends Stack {
       const ecsService = new ecs.FargateService(this, `Service${i}`, {
         cluster,
         taskDefinition,
-        desiredCount: 1,
+        desiredCount: props.configuration.taskCount === 0 ? 0 : 1,
         minHealthyPercent: props.configuration.minHealthyPercent,
         maxHealthyPercent: props.configuration.maxHealthyPercent,
         // Disabled so we can configure a maxHealthyPercent of 100 for test.
