@@ -71,8 +71,8 @@ export class MuleRuntimeStack extends Stack {
       });
 
       const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, `MuleRuntimeTaskDefinition${i}`, {
-        cpu: 1024,
-        memoryLimitMiB: 8192,
+        cpu: props.configuration.cpu,
+        memoryLimitMiB: props.configuration.memoryLimitMiB,
       });
 
       taskDefinition.addVolume({

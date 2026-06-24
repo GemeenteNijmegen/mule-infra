@@ -54,6 +54,15 @@ export interface Configuration {
    */
   maxHealthyPercent: number;
 
+  /**
+   * Number of cpu units used by the task
+   */
+  cpu: number;
+
+  /**
+   * Memory limit in MiB for the task
+   */
+  memoryLimitMiB: number;
 }
 
 const configurations: Configuration[] = [
@@ -65,6 +74,8 @@ const configurations: Configuration[] = [
     taskCount: 2,
     minHealthyPercent: 0,
     maxHealthyPercent: 100,
+    cpu: 1024,
+    memoryLimitMiB: 8192,
   },
   {
     branchName: 'acceptance',
@@ -74,6 +85,8 @@ const configurations: Configuration[] = [
     taskCount: 2,
     minHealthyPercent: 0,
     maxHealthyPercent: 100,
+    cpu: 1024,
+    memoryLimitMiB: 8192,
   },
   {
     branchName: 'main',
@@ -83,6 +96,8 @@ const configurations: Configuration[] = [
     taskCount: 2,
     minHealthyPercent: 0,
     maxHealthyPercent: 100,
+    cpu: 2048,
+    memoryLimitMiB: 16384,
   },
 ];
 
