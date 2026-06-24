@@ -1,13 +1,15 @@
 import { App } from 'aws-cdk-lib';
-import { getConfiguration } from './Configuration';
+import { getBranchToBuild, getConfiguration } from './Configuration';
 import { PipelineStack } from './PipelineStack';
+
+const branchToBuild = getBranchToBuild('acceptance');
+const configuration = getConfiguration(branchToBuild);
+console.info('Building branch:', branchToBuild);
 
 const app = new App();
 
-const branchToBuild = process.env.BRANCH_NAME ?? 'development';
-const configuration = getConfiguration(branchToBuild);
-
-new PipelineStack(app, 'mule-pipeline-'+ branchToBuild, {
+const stackName = `mule-pipeline-${configuration.branchName}`;
+new PipelineStack(app, stackName, {
   env: configuration.buildEnvironment,
   configuration: configuration,
 });
