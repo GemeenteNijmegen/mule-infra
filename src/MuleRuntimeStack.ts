@@ -118,6 +118,8 @@ export class MuleRuntimeStack extends Stack {
           SERVER_NAME: `mule-${props.configuration.branchName.toLowerCase()}-${i}`,
           MULE_TRUSTSTORE: trustStore.secretArn,
           MULE_KEYSTORE: keyStore.secretArn,
+          // Double the default size to prevent OutOfMemoryError when deploying an app
+          MULE_JVM_ARGS: '-M-XX:MaxMetaspaceSize=512m -M-XX:MetaspaceSize=256m',
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
