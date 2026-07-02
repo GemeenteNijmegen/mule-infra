@@ -40,7 +40,7 @@ export class MuleRuntimeStack extends Stack {
       vpc: vpc.vpc,
     });
 
-    const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image');
+    const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
     const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
     const clientSecret = Secret.fromSecretNameV2(this, 'MuleAnypointClientSecret', Statics.secretMuleAnypointClientSecret);
     const trustStore = Secret.fromSecretNameV2(this, 'MuleTrustStore', Statics.secretMuleTrustStore);
@@ -111,13 +111,15 @@ export class MuleRuntimeStack extends Stack {
       }));
 
       const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, 'de1b2ea256fc71899efecff4b500d003b39d2e73'),
+        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, Statics.muleDockerImageHash),
         logging: ecs.LogDrivers.awsLogs({ streamPrefix: `mule-runtime-${i}` }),
         environment: {
           SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
           SERVER_NAME: `mule-${props.configuration.branchName.toLowerCase()}-${i}`,
           MULE_TRUSTSTORE: trustStore.secretArn,
           MULE_KEYSTORE: keyStore.secretArn,
+          // Increase the default size to prevent OutOfMemoryError when deploying an app
+          MULE_JVM_ARGS: '-M-XX:MaxMetaspaceSize=1024m -M-XX:MetaspaceSize=512m',
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
