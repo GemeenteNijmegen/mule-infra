@@ -1,5 +1,5 @@
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_efs as efs, aws_iam as iam, Duration } from 'aws-cdk-lib';
+import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_efs as efs, aws_iam as iam, aws_sqs as sqs, Duration } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
@@ -39,6 +39,8 @@ export class MuleRuntimeStack extends Stack {
     const cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
       vpc: vpc.vpc,
     });
+
+    const queue = new sqs.Queue(this, 'MuleAppQueue');
 
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
     const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
@@ -120,6 +122,8 @@ export class MuleRuntimeStack extends Stack {
           MULE_KEYSTORE: keyStore.secretArn,
           // Increase the default size to prevent OutOfMemoryError when deploying an app
           MULE_JVM_ARGS: '-M-XX:MaxMetaspaceSize=1024m -M-XX:MetaspaceSize=512m',
+          SQS_QUEUE_URL: queue.queueUrl,
+          SQS_QUEUE_NAME: queue.queueName,
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -134,6 +138,8 @@ export class MuleRuntimeStack extends Stack {
       licenseSecret.grantRead(taskDefinition.taskRole);
       trustStore.grantRead(taskDefinition.taskRole);
       keyStore.grantRead(taskDefinition.taskRole);
+      queue.grantConsumeMessages(taskDefinition.taskRole);
+      queue.grantSendMessages(taskDefinition.taskRole);
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
