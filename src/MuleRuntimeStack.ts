@@ -120,8 +120,8 @@ export class MuleRuntimeStack extends Stack {
           SERVER_NAME: `mule-${props.configuration.branchName.toLowerCase()}-${i}`,
           MULE_TRUSTSTORE: trustStore.secretArn,
           MULE_KEYSTORE: keyStore.secretArn,
-          // Increase the default size to prevent OutOfMemoryError when deploying an app
-          MULE_JVM_ARGS: '-M-XX:MaxMetaspaceSize=1024m -M-XX:MetaspaceSize=512m',
+          // Set heap size as a percentage of container memory, and configure metaspace
+          MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=75.0 -M-XX:MaxRAMPercentage=75.0 -M-XX:MaxMetaspaceSize=1024m -M-XX:MetaspaceSize=512m',
           SQS_QUEUE_URL: queue.queueUrl,
           SQS_QUEUE_NAME: queue.queueName,
         },
