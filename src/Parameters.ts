@@ -83,5 +83,9 @@ export class ParameterStack extends Stack {
       secretName: Statics.secretMuleKeystorePassword,
     });
 
+    new Secret(this, 'mule-credentials', {
+      secretName: Statics.secretMuleCredentials,
+    });
+
   }
 }

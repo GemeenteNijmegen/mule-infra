@@ -4,6 +4,7 @@ import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatem
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancer, ApplicationProtocol, MutualAuthenticationMode, TrustStore } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import { Credentials } from 'aws-cdk-lib/aws-rds';
 import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
@@ -49,6 +50,8 @@ export class MuleRuntimeStack extends Stack {
     const keyStore = Secret.fromSecretNameV2(this, 'MuleKeyStore', Statics.secretMuleKeyStore);
     const keystorePassword = Secret.fromSecretNameV2(this, 'MuleKeystorePassword', Statics.secretMuleKeystorePassword);
     const truststorePassword = Secret.fromSecretNameV2(this, 'MuleTruststorePassword', Statics.secretMuleTruststorePassword);
+    const credentials = Secret.fromSecretNameV2(this, 'MuleCredentials', Statics.secretMuleCredentials);
+
 
     const clientIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId);
     const orgIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId);
@@ -132,6 +135,7 @@ export class MuleRuntimeStack extends Stack {
           ANYPOINT_ENV_ID: ecs.Secret.fromSsmParameter(envIdParam),
           MULE_KEYSTORE_PASSWORD: ecs.Secret.fromSecretsManager(keystorePassword),
           MULE_TRUSTSTORE_PASSWORD: ecs.Secret.fromSecretsManager(truststorePassword),
+          MULE_CREDENTIALS: ecs.Secret.fromSecretsManager(credentials),
         },
       });
 
@@ -143,6 +147,7 @@ export class MuleRuntimeStack extends Stack {
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
+      credentials.grantRead(taskDefinition.obtainExecutionRole());
 
       container.addPortMappings(
         {

@@ -18,6 +18,7 @@ export class Statics {
   static readonly secretMuleLicense = `/${Statics.projectName}/mule/license`;
   static readonly secretMuleKeystorePassword = `/${Statics.projectName}/mule/keystorepassword`;
   static readonly secretMuleTruststorePassword = `/${Statics.projectName}/mule/truststorepassword`;
+  static readonly secretMuleCredentials = `/${Statics.projectName}/mule/credentials`;
 
   // MARK: environments
   static readonly buildEnvironment = {
