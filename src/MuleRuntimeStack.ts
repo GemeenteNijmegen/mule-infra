@@ -126,7 +126,7 @@ export class MuleRuntimeStack extends Stack {
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=75.0 -M-XX:MaxRAMPercentage=75.0 -M-XX:MaxMetaspaceSize=2048m -M-XX:MetaspaceSize=1024m',
           SQS_QUEUE_URL: queue.queueUrl,
           SQS_QUEUE_NAME: queue.queueName,
-          MULE_CREDENTIALS: credentials.secretArn,
+          MULE_CREDENTIALS: credentials.secretName,
 
         },
         secrets: {
