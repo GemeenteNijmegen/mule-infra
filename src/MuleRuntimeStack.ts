@@ -147,7 +147,7 @@ export class MuleRuntimeStack extends Stack {
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
-      credentials.grantRead(taskDefinition.obtainExecutionRole());
+      credentials.grantRead(taskDefinition.taskRole);
 
       container.addPortMappings(
         {
