@@ -49,6 +49,6 @@ export class Statics {
   static readonly secretMuleTrustStore = `/${Statics.projectName}/mule/truststore`;
   static readonly secretMuleKeyStore = `/${Statics.projectName}/mule/keystore`;
   static readonly muleDockerImageRepositoryArn = 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image';
-  static readonly muleDockerImageHash = '2f56120a7c4efadec64a17f8681037450f07243a';
+  static readonly muleDockerImageHash = '80a493a7156142b369b7ab364387fed6744dcfe6';
 
 }
