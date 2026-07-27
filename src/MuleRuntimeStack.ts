@@ -226,6 +226,9 @@ export class MuleRuntimeStack extends Stack {
         path: '/health',
         healthyHttpCodes: '200',
         healthyThresholdCount: 2,
+        unhealthyThresholdCount: 5,
+        timeout: Duration.seconds(10),
+        interval: Duration.seconds(30),
       },
     });
   }
