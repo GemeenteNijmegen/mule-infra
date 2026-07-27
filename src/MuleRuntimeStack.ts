@@ -124,7 +124,7 @@ export class MuleRuntimeStack extends Stack {
           MULE_TRUSTSTORE: trustStore.secretArn,
           MULE_KEYSTORE: keyStore.secretArn,
           // Set heap size as a percentage of container memory, and configure metaspace
-          MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=1536m -M-XX:MetaspaceSize=512m',
+          MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
           SQS_QUEUE_URL: queue.queueUrl,
           SQS_QUEUE_NAME: queue.queueName,
           MULE_CREDENTIALS: credentials.secretName,
