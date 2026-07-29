@@ -82,6 +82,8 @@ const configurations: Configuration[] = [
     buildEnvironment: Statics.buildEnvironment,
     deploymentEnvironment: Statics.acceptanceEnvironment,
     criticality: new Criticality('medium'),
+    // When a lot of apps are deployed, we must upgrade to 1 instance with 16gb ram.
+    // For now, it makes sense to test 2 instances as with production.
     taskCount: 2,
     minHealthyPercent: 0,
     maxHealthyPercent: 100,
