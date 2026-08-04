@@ -4,7 +4,7 @@ import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatem
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancer, ApplicationProtocol, MutualAuthenticationMode, TrustStore } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { ARecord, HostedZone, PrivateHostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -55,6 +55,34 @@ export class MuleRuntimeStack extends Stack {
     const clientIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId);
     const orgIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId);
     const envIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointEnvId', Statics.ssmMuleAnypointEnvId);
+
+    const karelstadPrivateZone = new PrivateHostedZone(this, 'KarelstadPrivateHostedZone', {
+      zoneName: 'gn.karelstad.nl',
+      vpc: vpc.vpc,
+    });
+
+    const karelstadHosts: Record<string, string> = {
+      // Acceptance / Test Servers
+      'nijm-cko-t-001': '10.8.109.132',
+      'oosterstreek': '10.8.109.38',
+      'ouwerkerk': '10.8.107.96',
+      'opperdellen': '10.8.109.98',
+      'data-test': '192.168.10.10',
+      // Production Servers
+      'nijm-cko-p-001': '10.8.109.137',
+      'ottersum': '10.8.106.23',
+      'oosterbierum': '10.8.109.37',
+      'oudwoude': '10.8.107.95',
+      'data': '192.168.10.20',
+    };
+
+    Object.entries(karelstadHosts).forEach(([recordName, ip]) => {
+      new ARecord(this, `KarelstadRecord-${recordName}`, {
+        zone: karelstadPrivateZone,
+        recordName,
+        target: RecordTarget.fromIpAddresses(ip),
+      });
+    });
 
     const loadBalancerTargets = [];
     let previousService: ecs.FargateService | undefined;
