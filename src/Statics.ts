@@ -51,4 +51,11 @@ export class Statics {
   static readonly muleDockerImageRepositoryArn = 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image';
   static readonly muleDockerImageHash = '80a493a7156142b369b7ab364387fed6744dcfe6';
 
+  // MARK: proxy task (on-demand tinyproxy)
+  static readonly proxyContainerPort = 8888;
+  static readonly ssmProxyClusterName = `/${Statics.projectName}/proxy/cluster-name`;
+  static readonly ssmProxyTaskDefinitionArn = `/${Statics.projectName}/proxy/task-definition-arn`;
+  static readonly ssmProxySubnetId = `/${Statics.projectName}/proxy/subnet-id`;
+  static readonly ssmProxySecurityGroupId = `/${Statics.projectName}/proxy/security-group-id`;
+
 }

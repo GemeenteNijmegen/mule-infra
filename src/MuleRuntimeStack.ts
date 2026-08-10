@@ -17,13 +17,17 @@ interface MuleRuntimeStackProps extends StackProps, Configurable { }
 
 
 export class MuleRuntimeStack extends Stack {
+  public readonly vpc: ec2.IVpc;
+  public readonly cluster: ecs.ICluster;
+
   constructor(scope: Construct, id: string, private readonly props: MuleRuntimeStackProps) {
     super(scope, id, props);
     Aspects.of(this).add(new PermissionsBoundaryAspect());
-    const vpc = new GemeenteNijmegenVpc(this, 'vpc');
+    const vpcWrapper = new GemeenteNijmegenVpc(this, 'vpc');
+    this.vpc = vpcWrapper.vpc;
 
     const fileSystem = new efs.FileSystem(this, 'MuleEfs', {
-      vpc: vpc.vpc,
+      vpc: this.vpc,
       encrypted: true,
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
@@ -36,8 +40,8 @@ export class MuleRuntimeStack extends Stack {
       validation: CertificateValidation.fromDns(hostedZone),
     });
 
-    const cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
-      vpc: vpc.vpc,
+    this.cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
+      vpc: this.vpc,
     });
 
     const queue = new sqs.Queue(this, 'MuleAppQueue');
@@ -58,7 +62,7 @@ export class MuleRuntimeStack extends Stack {
 
     const karelstadPrivateZone = new PrivateHostedZone(this, 'KarelstadPrivateHostedZone', {
       zoneName: 'gn.karelstad.nl',
-      vpc: vpc.vpc,
+      vpc: this.vpc,
     });
 
     const karelstadHosts: Record<string, string> = {
@@ -192,7 +196,7 @@ export class MuleRuntimeStack extends Stack {
       });
 
       const ecsService = new ecs.FargateService(this, `Service${i}`, {
-        cluster,
+        cluster: this.cluster,
         taskDefinition,
         desiredCount: props.configuration.taskCount === 0 ? 0 : 1,
         minHealthyPercent: props.configuration.minHealthyPercent,
@@ -221,7 +225,7 @@ export class MuleRuntimeStack extends Stack {
     }
 
     const lb = new ApplicationLoadBalancer(this, 'LB', {
-      vpc: vpc.vpc,
+      vpc: this.vpc,
       internetFacing: true,
     });
 

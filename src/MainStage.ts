@@ -3,6 +3,7 @@ import { Aspects, Stage, StageProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
 import { MuleRuntimeStack } from './MuleRuntimeStack';
+import { ProxyStack } from './ProxyStack';
 
 interface MainStageProps extends StageProps, Configurable { }
 
@@ -18,10 +19,22 @@ export class MainStage extends Stage {
     /**
      * Main stack of this project
      */
-    new MuleRuntimeStack(this, 'stack', {
+    const muleStack = new MuleRuntimeStack(this, 'stack', {
       env: props.configuration.deploymentEnvironment,
       configuration: props.configuration,
     });
+
+    /**
+     * On-demand proxy stack for dev/acc environments
+     */
+    if (props.configuration.proxyEnabled) {
+      new ProxyStack(this, 'proxy-stack', {
+        env: props.configuration.deploymentEnvironment,
+        configuration: props.configuration,
+        vpc: muleStack.vpc,
+        cluster: muleStack.cluster,
+      });
+    }
 
   }
 

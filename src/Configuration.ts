@@ -63,6 +63,12 @@ export interface Configuration {
    * Memory limit in MiB for the task
    */
   memoryLimitMiB: number;
+
+  /**
+   * Whether to deploy the on-demand tinyproxy task definition.
+   * Intended for development and acceptance environments only.
+   */
+  proxyEnabled: boolean;
 }
 
 const configurations: Configuration[] = [
@@ -76,6 +82,7 @@ const configurations: Configuration[] = [
     maxHealthyPercent: 100,
     cpu: 2048,
     memoryLimitMiB: 16384,
+    proxyEnabled: true,
   },
   {
     branchName: 'acceptance',
@@ -87,6 +94,7 @@ const configurations: Configuration[] = [
     maxHealthyPercent: 100,
     cpu: 2048,
     memoryLimitMiB: 16384,
+    proxyEnabled: true,
   },
   {
     branchName: 'main',
@@ -98,6 +106,7 @@ const configurations: Configuration[] = [
     maxHealthyPercent: 100,
     cpu: 2048,
     memoryLimitMiB: 16384,
+    proxyEnabled: false,
   },
 ];
 
