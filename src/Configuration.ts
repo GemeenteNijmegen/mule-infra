@@ -19,6 +19,11 @@ export interface Configuration {
   branchName: string;
 
   /**
+   * CNAME records for cert validation
+   */
+  cnames?: Record<string, string>;
+
+  /**
    * The pipeline will run from this environment
    *
    * Use this environment for your initial manual deploy
@@ -83,6 +88,9 @@ const configurations: Configuration[] = [
     cpu: 2048,
     memoryLimitMiB: 16384,
     proxyEnabled: true,
+    cnames: {
+      _D1D3DA83D42898AF7DCC082754D0677D: '2DFCA4BBF3A2E3E9309B552F57876D8C.9633141E74B7095EB9444AD755627AFF.sectigo.com', //cert for on-prem layer7 auth (dev)
+    },
   },
   {
     branchName: 'acceptance',
@@ -95,6 +103,9 @@ const configurations: Configuration[] = [
     cpu: 2048,
     memoryLimitMiB: 16384,
     proxyEnabled: true,
+    cnames: {
+      _0B09FEE32BBC128264F775BF32511736: '447C490326AFABB4B06FAF37F45BA0E1.115767F454ECB8FACEE90B42FADF56A6.sectigo.com', //cert for on-prem layer7 auth (accp)
+    },
   },
   {
     branchName: 'main',
@@ -107,6 +118,9 @@ const configurations: Configuration[] = [
     cpu: 2048,
     memoryLimitMiB: 16384,
     proxyEnabled: false,
+    cnames: {
+      // _xxx: 'xxxx.sectigo.com', //cert for on-prem layer7 auth (prod)
+    },
   },
 ];
 

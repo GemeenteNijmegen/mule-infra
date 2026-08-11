@@ -45,7 +45,7 @@ export class ProxyStack extends Stack {
         [
           `printf 'Port ${Statics.proxyContainerPort}\\nListen 0.0.0.0\\nTimeout 600\\nMaxClients 20\\nAllow 0.0.0.0/0\\nLogLevel Critical\\n'`,
           '> /etc/tinyproxy/tinyproxy.conf',
-          `&& tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf`,
+          '&& tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf',
         ].join(' '),
       ],
       portMappings: [{
