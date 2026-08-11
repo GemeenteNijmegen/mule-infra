@@ -1,10 +1,11 @@
+import * as crypto from 'crypto';
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_efs as efs, aws_iam as iam, aws_sqs as sqs, Duration } from 'aws-cdk-lib';
+import { Aspects, Duration, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_sqs as sqs } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancer, ApplicationProtocol, MutualAuthenticationMode, TrustStore } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import { ARecord, HostedZone, PrivateHostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { ARecord, CnameRecord, HostedZone, IHostedZone, PrivateHostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -39,6 +40,7 @@ export class MuleRuntimeStack extends Stack {
       domainName: '*.' + hostedZone.zoneName,
       validation: CertificateValidation.fromDns(hostedZone),
     });
+    this.addCnameRecords(hostedZone, this.props.configuration.cnames);
 
     this.cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
       vpc: this.vpc,
@@ -275,6 +277,23 @@ export class MuleRuntimeStack extends Stack {
         this,
         Statics.accountHostedzoneName,
       ),
+    });
+  }
+
+  /**
+   * Add CNAME records to the hosted zone based on the configuration provided
+   * @param hostedZone
+   * @param cnameRecords
+   */
+  addCnameRecords(hostedZone: IHostedZone, cnameRecords?: { [key: string]: string }) {
+    if (!cnameRecords) { return; };
+    Object.entries(cnameRecords).forEach(entry => {
+      const logicalId = crypto.createHash('md5').update(entry[0] + entry[1]).digest('hex').substring(0, 10);
+      new CnameRecord(this, `cname-record-${logicalId}`, {
+        recordName: entry[0],
+        domainName: entry[1],
+        zone: hostedZone,
+      });
     });
   }
 }
