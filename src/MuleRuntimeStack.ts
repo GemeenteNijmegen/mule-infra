@@ -55,8 +55,6 @@ export class MuleRuntimeStack extends Stack {
     const keyStore = Secret.fromSecretNameV2(this, 'MuleKeyStore', Statics.secretMuleKeyStore);
     const keystorePassword = Secret.fromSecretNameV2(this, 'MuleKeystorePassword', Statics.secretMuleKeystorePassword);
     const truststorePassword = Secret.fromSecretNameV2(this, 'MuleTruststorePassword', Statics.secretMuleTruststorePassword);
-    const credentials = Secret.fromSecretNameV2(this, 'MuleCredentials', Statics.secretMuleCredentials);
-
 
     const clientIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId);
     const orgIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId);
@@ -181,7 +179,7 @@ export class MuleRuntimeStack extends Stack {
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
-      
+
       // all mule secrets with the format of "/${Statics.projectName}/mule/credentials/" have enough IAM policy
       taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
         actions: ['secretsmanager:GetSecretValue'],

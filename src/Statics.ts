@@ -21,11 +21,7 @@ export class Statics {
   static readonly secretMuleCredentials = `/${Statics.projectName}/mule/credentials`;
   static readonly muleCredentialNames: string[] = [
     // Add Mule application credential names here, e.g.:
-    // 'decos-nijm-eapi',
-    // 'easyfunders-eapi',
-    // 'edata-eapi',
-    // 'energiemissie-eapi',
-    // 'citypermit-eapi',
+    // 'notifynl-nijm-sapi',
     'hello-world',
   ];
 
