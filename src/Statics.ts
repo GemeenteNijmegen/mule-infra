@@ -19,6 +19,15 @@ export class Statics {
   static readonly secretMuleKeystorePassword = `/${Statics.projectName}/mule/keystorepassword`;
   static readonly secretMuleTruststorePassword = `/${Statics.projectName}/mule/truststorepassword`;
   static readonly secretMuleCredentials = `/${Statics.projectName}/mule/credentials`;
+  static readonly muleCredentialNames: string[] = [
+    // Add Mule application credential names here, e.g.:
+    // 'decos-nijm-eapi',
+    // 'easyfunders-eapi',
+    // 'edata-eapi',
+    // 'energiemissie-eapi',
+    // 'citypermit-eapi',
+    'hello-world',
+  ];
 
   // MARK: environments
   static readonly buildEnvironment = {

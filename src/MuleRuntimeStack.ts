@@ -161,7 +161,6 @@ export class MuleRuntimeStack extends Stack {
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
           SQS_QUEUE_URL: queue.queueUrl,
           SQS_QUEUE_NAME: queue.queueName,
-          MULE_CREDENTIALS: credentials.secretName,
 
         },
         secrets: {
@@ -182,7 +181,14 @@ export class MuleRuntimeStack extends Stack {
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
-      credentials.grantRead(taskDefinition.taskRole);
+      
+      // all mule secrets with the format of "/${Statics.projectName}/mule/credentials/" have enough IAM policy
+      taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${Statics.secretMuleCredentials}*`,
+        ],
+      }));
 
       container.addPortMappings(
         {
