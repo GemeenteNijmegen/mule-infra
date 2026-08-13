@@ -55,6 +55,7 @@ export class MuleRuntimeStack extends Stack {
     const keyStore = Secret.fromSecretNameV2(this, 'MuleKeyStore', Statics.secretMuleKeyStore);
     const keystorePassword = Secret.fromSecretNameV2(this, 'MuleKeystorePassword', Statics.secretMuleKeystorePassword);
     const truststorePassword = Secret.fromSecretNameV2(this, 'MuleTruststorePassword', Statics.secretMuleTruststorePassword);
+    const secretsNameBase = Secret.fromSecretNameV2(this, 'MuleSecretsNameBase', Statics.secretMuleCredentials);
 
     const clientIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId);
     const orgIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId);
@@ -159,7 +160,7 @@ export class MuleRuntimeStack extends Stack {
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
           SQS_QUEUE_URL: queue.queueUrl,
           SQS_QUEUE_NAME: queue.queueName,
-
+          MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),

@@ -23,6 +23,7 @@ export class Statics {
     // Add Mule application credential names here, e.g.:
     // 'notifynl-nijm-sapi',
     'hello-world',
+    'notify-nl',
   ];
 
   // MARK: environments
