@@ -119,7 +119,7 @@ const configurations: Configuration[] = [
     memoryLimitMiB: 16384,
     proxyEnabled: false,
     cnames: {
-      // _xxx: 'xxxx.sectigo.com', //cert for on-prem layer7 auth (prod)
+      _1DC27ABD6F2109D11C591AC526AF32E6: '4EE21CC4381A02B97A207FBD9D8829E5.6D9C8F9FE4391645761530BE296B0498.sectigo.com', //cert for on-prem layer7 auth (prod)
     },
   },
 ];
