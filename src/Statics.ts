@@ -18,6 +18,13 @@ export class Statics {
   static readonly secretMuleLicense = `/${Statics.projectName}/mule/license`;
   static readonly secretMuleKeystorePassword = `/${Statics.projectName}/mule/keystorepassword`;
   static readonly secretMuleTruststorePassword = `/${Statics.projectName}/mule/truststorepassword`;
+  static readonly secretMuleCredentials = `/${Statics.projectName}/mule/credentials`;
+  static readonly muleCredentialNames: string[] = [
+    // Add Mule application credential names here, e.g.:
+    // 'notifynl-nijm-sapi',
+    'hello-world',
+    'notify-nl',
+  ];
 
   // MARK: environments
   static readonly buildEnvironment = {
@@ -48,6 +55,13 @@ export class Statics {
   static readonly secretMuleTrustStore = `/${Statics.projectName}/mule/truststore`;
   static readonly secretMuleKeyStore = `/${Statics.projectName}/mule/keystore`;
   static readonly muleDockerImageRepositoryArn = 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image';
-  static readonly muleDockerImageHash = 'bfd582c80669ca4a1cf2de719a735f20774eeecf';
+  static readonly muleDockerImageHash = '80a493a7156142b369b7ab364387fed6744dcfe6';
+
+  // MARK: proxy task (on-demand tinyproxy)
+  static readonly proxyContainerPort = 8888;
+  static readonly ssmProxyClusterName = `/${Statics.projectName}/proxy/cluster-name`;
+  static readonly ssmProxyTaskDefinitionArn = `/${Statics.projectName}/proxy/task-definition-arn`;
+  static readonly ssmProxySubnetId = `/${Statics.projectName}/proxy/subnet-id`;
+  static readonly ssmProxySecurityGroupId = `/${Statics.projectName}/proxy/security-group-id`;
 
 }
