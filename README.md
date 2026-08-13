@@ -62,6 +62,10 @@ You must store the `truststore.pem` file containing public certificates in the d
 > [!WARNING]  
 > If the `.pem` file is updated, you must replace it in the S3 bucket and also manually update the truststore on the corresponding EC2 instances to ensure they use the new version.
 
+### 4. Application credentials per app
+
+You must store all credentials in its own secrets such as `/mule-infra/mule/credentials/hello-world` as key/value. They will be retrieved by the dependecy `aws-secrets-manager-properties-override` in mule. 
+
 ## Infrastructure
 
 When you push a change to the development, acceptance or main branch, the following happens:
