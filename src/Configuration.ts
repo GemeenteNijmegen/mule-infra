@@ -89,7 +89,7 @@ const configurations: Configuration[] = [
     memoryLimitMiB: 16384,
     proxyEnabled: true,
     cnames: {
-      _D1D3DA83D42898AF7DCC082754D0677D: '2DFCA4BBF3A2E3E9309B552F57876D8C.9633141E74B7095EB9444AD755627AFF.sectigo.com', //cert for on-prem layer7 auth (dev)
+      '_D1D3DA83D42898AF7DCC082754D0677D.data': '2DFCA4BBF3A2E3E9309B552F57876D8C.9633141E74B7095EB9444AD755627AFF.sectigo.com', //cert for on-prem layer7 auth (dev)
     },
   },
   {
@@ -104,7 +104,7 @@ const configurations: Configuration[] = [
     memoryLimitMiB: 16384,
     proxyEnabled: true,
     cnames: {
-      _0B09FEE32BBC128264F775BF32511736: '447C490326AFABB4B06FAF37F45BA0E1.115767F454ECB8FACEE90B42FADF56A6.sectigo.com', //cert for on-prem layer7 auth (accp)
+      '_0B09FEE32BBC128264F775BF32511736.data': '447C490326AFABB4B06FAF37F45BA0E1.115767F454ECB8FACEE90B42FADF56A6.sectigo.com', //cert for on-prem layer7 auth (accp)
     },
   },
   {
