@@ -188,10 +188,10 @@ export class MuleRuntimeStack extends Stack {
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
 
-      mainQueue.grantConsumeMessages(taskDefinition.obtainExecutionRole());
-      mainQueue.grantSendMessages(taskDefinition.obtainExecutionRole());
-      deadLetterQueue.grantConsumeMessages(taskDefinition.obtainExecutionRole());
-      deadLetterQueue.grantSendMessages(taskDefinition.obtainExecutionRole());
+      mainQueue.grantConsumeMessages(taskDefinition.taskRole);
+      mainQueue.grantSendMessages(taskDefinition.taskRole);
+      deadLetterQueue.grantConsumeMessages(taskDefinition.taskRole);
+      deadLetterQueue.grantSendMessages(taskDefinition.taskRole);
 
       // all mule secrets with the format of "/${Statics.projectName}/mule/credentials/" have enough IAM policy
       taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
