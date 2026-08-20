@@ -24,7 +24,7 @@ export class Statics {
     // 'notifynl-nijm-sapi',
     'hello-world',
     'notify-nl',
-    'corsa'
+    'corsa',
   ];
 
   // MARK: environments
