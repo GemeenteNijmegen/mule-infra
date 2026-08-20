@@ -46,8 +46,6 @@ export class MuleRuntimeStack extends Stack {
       vpc: this.vpc,
     });
 
-    const queue = new sqs.Queue(this, 'MuleAppQueue');
-
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
     const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
     const clientSecret = Secret.fromSecretNameV2(this, 'MuleAnypointClientSecret', Statics.secretMuleAnypointClientSecret);
@@ -158,8 +156,6 @@ export class MuleRuntimeStack extends Stack {
           MULE_KEYSTORE: keyStore.secretArn,
           // Set heap size as a percentage of container memory, and configure metaspace
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
-          SQS_QUEUE_URL: queue.queueUrl,
-          SQS_QUEUE_NAME: queue.queueName,
           MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
         },
         secrets: {
@@ -175,8 +171,6 @@ export class MuleRuntimeStack extends Stack {
       licenseSecret.grantRead(taskDefinition.taskRole);
       trustStore.grantRead(taskDefinition.taskRole);
       keyStore.grantRead(taskDefinition.taskRole);
-      queue.grantConsumeMessages(taskDefinition.taskRole);
-      queue.grantSendMessages(taskDefinition.taskRole);
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
