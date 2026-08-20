@@ -1,10 +1,11 @@
 import * as crypto from 'crypto';
-import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Duration, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_sqs as sqs } from 'aws-cdk-lib';
+import { GemeenteNijmegenVpc, PermissionsBoundaryAspect, QueueWithDlq } from '@gemeentenijmegen/aws-constructs';
+import { Aspects, Duration, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancer, ApplicationProtocol, MutualAuthenticationMode, TrustStore } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import { Key } from 'aws-cdk-lib/aws-kms';
 import { ARecord, CnameRecord, HostedZone, IHostedZone, PrivateHostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
@@ -46,7 +47,13 @@ export class MuleRuntimeStack extends Stack {
       vpc: this.vpc,
     });
 
-    const queue = new sqs.Queue(this, 'MuleAppQueue');
+    const kmsKey = new Key(this, 'MuleRuntimeKmsKey');
+    const MuleQueueWithDlq = new QueueWithDlq(this, 'MuleQueueWithDlq', {
+      identifier: 'mule-generic-queue',
+      kmsKey: kmsKey,
+    });
+    const mainQueue = MuleQueueWithDlq.queue;
+    const deadLetterQueue = MuleQueueWithDlq.dlq;
 
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
     const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
@@ -158,8 +165,10 @@ export class MuleRuntimeStack extends Stack {
           MULE_KEYSTORE: keyStore.secretArn,
           // Set heap size as a percentage of container memory, and configure metaspace
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
-          SQS_QUEUE_URL: queue.queueUrl,
-          SQS_QUEUE_NAME: queue.queueName,
+          SQS_QUEUE_URL: mainQueue.queueUrl,
+          SQS_QUEUE_NAME: mainQueue.queueName,
+          SQS_DEAD_LETTER_QUEUE_URL: deadLetterQueue.queueUrl,
+          SQS_DEAD_LETTER_QUEUE_NAME: deadLetterQueue.queueName,
           MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
         },
         secrets: {
@@ -175,11 +184,14 @@ export class MuleRuntimeStack extends Stack {
       licenseSecret.grantRead(taskDefinition.taskRole);
       trustStore.grantRead(taskDefinition.taskRole);
       keyStore.grantRead(taskDefinition.taskRole);
-      queue.grantConsumeMessages(taskDefinition.taskRole);
-      queue.grantSendMessages(taskDefinition.taskRole);
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
+
+      mainQueue.grantConsumeMessages(taskDefinition.obtainExecutionRole());
+      mainQueue.grantSendMessages(taskDefinition.obtainExecutionRole());
+      deadLetterQueue.grantConsumeMessages(taskDefinition.obtainExecutionRole());
+      deadLetterQueue.grantSendMessages(taskDefinition.obtainExecutionRole());
 
       // all mule secrets with the format of "/${Statics.projectName}/mule/credentials/" have enough IAM policy
       taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
