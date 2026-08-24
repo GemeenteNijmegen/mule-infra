@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect, QueueWithDlq } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Duration, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam } from 'aws-cdk-lib';
+import { Aspects, Duration, RemovalPolicy, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_logs as logs } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
@@ -109,6 +109,11 @@ export class MuleRuntimeStack extends Stack {
     // Preserving the mule-agent.yml is required to maintain the server's registration and connectivity with Anypoint Runtime Manager.
     const loopCount = Math.max(1, props.configuration.taskCount);
     for (let i = 1; i <= loopCount; i++) {
+      const logGroup = new logs.LogGroup(this, `MuleRuntimeLogGroup${i}`, {
+        logGroupName: `/mule/${props.configuration.branchName}/runtime-${i}`,
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.RETAIN,
+      });
       const accessPoint = new efs.AccessPoint(this, `MuleEfsAccessPoint${i}`, {
         fileSystem,
         path: `/mule-data-${i}`,
@@ -156,7 +161,10 @@ export class MuleRuntimeStack extends Stack {
 
       const container = taskDefinition.addContainer('MuleRuntimeContainer', {
         image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, Statics.muleDockerImageHash),
-        logging: ecs.LogDrivers.awsLogs({ streamPrefix: `mule-runtime-${i}` }),
+        logging: ecs.LogDrivers.awsLogs({
+          streamPrefix: `mule-runtime-${i}`,
+          logGroup,
+        }),
         memoryLimitMiB: props.configuration.memoryLimitMiB,
         environment: {
           SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,

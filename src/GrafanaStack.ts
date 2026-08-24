@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import {
   Aspects,
@@ -78,6 +80,7 @@ export class GrafanaStack extends Stack {
         'cloudwatch:ListMetrics',
         'logs:DescribeLogGroups',
         'logs:DescribeQueries',
+        'logs:DescribeLogStreams',
         'logs:FilterLogEvents',
         'logs:GetLogEvents',
         'logs:GetQueryResults',
@@ -87,24 +90,31 @@ export class GrafanaStack extends Stack {
       ],
       resources: ['*'],
     }));
-    const provisioningLines = [
-      'apiVersion: 1',
-      'datasources:',
-      '  - name: CloudWatch',
-      '    type: cloudwatch',
-      '    access: proxy',
-      '    isDefault: true',
-      '    jsonData:',
-      '      authType: default',
-      `      defaultRegion: ${this.region}`,
-    ];
+    const grafanaConfigRoot = path.join(__dirname, 'grafana');
+    const dashboard = fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards/mule-runtime-logs.json'), 'utf8')
+      .replace(/__AWS_ACCOUNT_ID__/g, this.account)
+      .replace(/__AWS_REGION__/g, this.region)
+      .replace(/__MULE_LOG_GROUP__/g, `/mule/${props.configuration.branchName}/runtime-1`);
+    const provisioningFiles = new Map<string, string>([
+      [
+        '/var/lib/grafana/provisioning/datasources/cloudwatch.yaml',
+        fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/datasources/cloudwatch.yaml'), 'utf8')
+          .replace(/__AWS_REGION__/g, this.region),
+      ],
+      [
+        '/var/lib/grafana/provisioning/dashboards/mule.yaml',
+        fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/dashboards/mule.yaml'), 'utf8'),
+      ],
+      ['/var/lib/grafana/dashboards/mule-runtime-logs.json', dashboard],
+    ]);
     const provisioningScript = [
       'set -eu',
-      'mkdir -p "$GF_PATHS_PROVISIONING/datasources"',
-      `printf '%s\\n' ${provisioningLines.map(line => `'${line}'`).join(' ')} > "$GF_PATHS_PROVISIONING/datasources/cloudwatch.yaml"`,
+      ...Array.from(provisioningFiles.entries()).flatMap(([filePath, contents]) => [
+        `mkdir -p '${path.posix.dirname(filePath)}'`,
+        `echo '${Buffer.from(contents).toString('base64')}' | base64 -d > '${filePath}'`,
+      ]),
       'exec /run.sh grafana server --homepath=/usr/share/grafana --config=/etc/grafana/grafana.ini cfg:default.log.mode=console',
     ].join('\n');
-
     const container = taskDefinition.addContainer('GrafanaContainer', {
       image: ecs.ContainerImage.fromRegistry(Statics.grafanaDockerImage),
       user: '472',

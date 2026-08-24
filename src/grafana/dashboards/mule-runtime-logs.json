@@ -1,0 +1,72 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 20,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyJSON": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "expression": "fields @timestamp, @message, @logStream\n| sort @timestamp desc\n| limit 100",
+          "id": "",
+          "logGroups": [
+            {
+              "accountId": "__AWS_ACCOUNT_ID__",
+              "arn": "arn:aws:logs:__AWS_REGION__:__AWS_ACCOUNT_ID__:log-group:__MULE_LOG_GROUP__:*",
+              "name": "__MULE_LOG_GROUP__"
+            }
+          ],
+          "queryMode": "Logs",
+          "refId": "A",
+          "region": "__AWS_REGION__",
+          "statsGroups": []
+        }
+      ],
+      "title": "Mule runtime 1 logs",
+      "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": [
+    "cloudwatch",
+    "mule"
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Mule Runtime Logs",
+  "uid": "mule-runtime-logs",
+  "version": 1
+}
