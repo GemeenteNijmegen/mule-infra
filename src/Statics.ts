@@ -57,6 +57,7 @@ export class Statics {
   static readonly secretMuleKeyStore = `/${Statics.projectName}/mule/keystore`;
   static readonly muleDockerImageRepositoryArn = 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image';
   static readonly muleDockerImageHash = '80a493a7156142b369b7ab364387fed6744dcfe6';
+  static readonly grafanaDockerImage = 'grafana/grafana:13.1.3';
 
   // MARK: proxy task (on-demand tinyproxy)
   static readonly proxyContainerPort = 8888;

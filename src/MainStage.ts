@@ -2,6 +2,7 @@ import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import { Aspects, Stage, StageProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
+import { GrafanaStack } from './GrafanaStack';
 import { MuleRuntimeStack } from './MuleRuntimeStack';
 import { ProxyStack } from './ProxyStack';
 
@@ -35,6 +36,13 @@ export class MainStage extends Stage {
         cluster: muleStack.cluster,
       });
     }
+
+    new GrafanaStack(this, 'grafana-stack', {
+      env: props.configuration.deploymentEnvironment,
+      configuration: props.configuration,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
 
   }
 
