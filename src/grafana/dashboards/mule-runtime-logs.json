@@ -53,6 +53,75 @@
       ],
       "title": "Mule runtime 1 logs",
       "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cloudwatch"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "auto",
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": ["sum"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cloudwatch"
+          },
+          "expression": "filter priority = \"ERROR\" and tracePoint = \"EXCEPTION\"\n| stats count(*) as errors by bin(5m), applicationName",
+          "id": "",
+          "logGroups": [
+            {
+              "accountId": "__AWS_ACCOUNT_ID__",
+              "arn": "arn:aws:logs:__AWS_REGION__:__AWS_ACCOUNT_ID__:log-group:__MULE_LOG_GROUP__:*",
+              "name": "__MULE_LOG_GROUP__"
+            }
+          ],
+          "queryLanguage": "CWLI",
+          "queryMode": "Logs",
+          "refId": "A",
+          "region": "__AWS_REGION__",
+          "statsGroups": ["bin(5m)", "applicationName"]
+        }
+      ],
+      "title": "Errors over time by application",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
