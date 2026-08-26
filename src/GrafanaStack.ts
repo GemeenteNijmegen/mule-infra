@@ -91,10 +91,13 @@ export class GrafanaStack extends Stack {
       resources: ['*'],
     }));
     const grafanaConfigRoot = path.join(__dirname, 'grafana');
-    const dashboard = fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards/mule-runtime-logs.json'), 'utf8')
+    const renderGrafanaConfig = (contents: string) => contents
       .replace(/__AWS_ACCOUNT_ID__/g, this.account)
       .replace(/__AWS_REGION__/g, this.region)
       .replace(/__MULE_LOG_GROUP__/g, `/mule/${props.configuration.branchName}/runtime-1`);
+    const dashboard = renderGrafanaConfig(
+      fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards/mule-runtime-logs.json'), 'utf8'),
+    );
     const provisioningFiles = new Map<string, string>([
       [
         '/var/lib/grafana/provisioning/datasources/cloudwatch.yaml',
@@ -104,6 +107,12 @@ export class GrafanaStack extends Stack {
       [
         '/var/lib/grafana/provisioning/dashboards/mule.yaml',
         fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/dashboards/mule.yaml'), 'utf8'),
+      ],
+      [
+        '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml',
+        renderGrafanaConfig(
+          fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/mule-runtime-errors.yaml'), 'utf8'),
+        ),
       ],
       ['/var/lib/grafana/dashboards/mule-runtime-logs.json', dashboard],
     ]);

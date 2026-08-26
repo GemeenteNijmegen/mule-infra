@@ -1,0 +1,113 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: mule-runtime-errors
+    folder: Mule
+    interval: 1m
+    rules:
+      - uid: mule-runtime-errors
+        title: Mule runtime errors
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 604800
+              to: 0
+            datasourceUid: cloudwatch
+            model:
+              datasource:
+                type: cloudwatch
+                uid: cloudwatch
+              dimensions: {}
+              expression: |
+                fields @timestamp, applicationName, @message
+                | filter strcontains(@message, "error")
+                | stats count(*) as errors by bin(5m), applicationName
+              id: ""
+              intervalMs: 1000
+              label: ""
+              logGroups:
+                - accountId: "__AWS_ACCOUNT_ID__"
+                  arn: "arn:aws:logs:__AWS_REGION__:__AWS_ACCOUNT_ID__:log-group:__MULE_LOG_GROUP__:*"
+                  name: "__MULE_LOG_GROUP__"
+              matchExact: false
+              maxDataPoints: 43200
+              metricEditorMode: 0
+              metricName: ""
+              metricQueryType: 0
+              namespace: AWS/ECS
+              period: ""
+              queryLanguage: CWLI
+              queryMode: Logs
+              refId: A
+              region: "__AWS_REGION__"
+              sqlExpression: ""
+              statistic: Average
+              statsGroups:
+                - bin(5m)
+                - applicationName
+          - refId: B
+            queryType: expression
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: []
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: expression
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations: {}
+        labels:
+          severity: warning
+        isPaused: false
