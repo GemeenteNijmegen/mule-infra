@@ -107,7 +107,16 @@ groups:
         noDataState: NoData
         execErrState: Error
         for: 1m
-        annotations: {}
+        annotations:
+          __dashboardUid__: mule-runtime-logs
+          __panelId__: "1"
+          summary: 'Mule runtime errors for {{ $labels.applicationName }}'
+          description: '{{ $labels.applicationName }} logged {{ $values.B.Value }} errors in the evaluation window.'
+          logs_query: |
+            fields @timestamp, applicationName, @logStream, @message
+            | filter applicationName = "{{ $labels.applicationName }}" and strcontains(@message, "error")
+            | sort @timestamp desc
+            | limit 50
         labels:
           severity: warning
         notification_settings:

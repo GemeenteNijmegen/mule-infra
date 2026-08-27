@@ -12,3 +12,31 @@ contactPoints:
           sigv4:
             region: "__AWS_REGION__"
           subject: "Mule Grafana alert"
+          message: |
+            {{ range .Alerts.Firing -}}
+            Mule runtime errors
+
+            Application: {{ if index .Labels "applicationName" }}{{ index .Labels "applicationName" }}{{ else }}unknown{{ end }}
+            Count/value: {{ .ValueString }}
+            Started: {{ .StartsAt }}
+
+            {{ with .PanelURL -}}
+            Logs panel: {{ . }}
+            {{ end -}}
+            {{ with .DashboardURL -}}
+            Dashboard: {{ . }}
+            {{ end -}}
+            Alert: {{ .GeneratorURL }}
+            Silence: {{ .SilenceURL }}
+
+            Logs Insights query:
+            fields @timestamp, applicationName, @logStream, @message
+            {{ if index .Labels "applicationName" -}}
+            | filter applicationName = "{{ index .Labels "applicationName" }}" and strcontains(@message, "error")
+            {{ else -}}
+            | filter strcontains(@message, "error")
+            {{ end -}}
+            | sort @timestamp desc
+            | limit 50
+
+            {{ end }}
