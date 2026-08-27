@@ -110,4 +110,6 @@ groups:
         annotations: {}
         labels:
           severity: warning
+        notification_settings:
+          receiver: mule-runtime-errors-sns
         isPaused: false

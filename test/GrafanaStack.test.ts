@@ -42,5 +42,20 @@ describe('GrafanaStack', () => {
         }),
       ]),
     });
+
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Command: Match.arrayWith([
+            Match.stringLikeRegexp('/var/lib/grafana/provisioning/alerting/sns-contact-point.yaml'),
+          ]),
+        }),
+      ]),
+    });
+
+    template.hasResourceProperties('AWS::SNS::Subscription', {
+      Protocol: 'email',
+      Endpoint: 'e.kuijs@nijmegen.nl',
+    });
   });
 });

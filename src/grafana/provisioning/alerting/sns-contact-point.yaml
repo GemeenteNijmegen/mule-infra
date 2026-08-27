@@ -1,0 +1,14 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: mule-runtime-errors-sns
+    receivers:
+      - uid: mule-runtime-errors-sns
+        type: sns
+        settings:
+          api_url: "https://sns.__AWS_REGION__.amazonaws.com"
+          topic_arn: "__SNS_TOPIC_ARN__"
+          sigv4:
+            region: "__AWS_REGION__"
+          subject: "Mule Grafana alert"

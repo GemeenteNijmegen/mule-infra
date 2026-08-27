@@ -12,6 +12,8 @@ import {
   aws_ecs as ecs,
   aws_iam as iam,
   aws_logs as logs,
+  aws_sns as sns,
+  aws_sns_subscriptions as subscriptions,
 } from 'aws-cdk-lib';
 import { ApplicationLoadBalancer, ApplicationProtocol } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -90,11 +92,21 @@ export class GrafanaStack extends Stack {
       ],
       resources: ['*'],
     }));
+    const alertTopicName = `${Statics.projectName}-grafana-alerts-${props.configuration.branchName}`;
+    const alertTopicArn = `arn:aws:sns:${this.region}:${this.account}:${alertTopicName}`;
+    const alertTopic = new sns.Topic(this, 'GrafanaAlertTopic', {
+      topicName: alertTopicName,
+      displayName: `Mule Grafana alerts ${props.configuration.branchName}`,
+    });
+    alertTopic.addSubscription(new subscriptions.EmailSubscription('e.kuijs@nijmegen.nl'));
+    alertTopic.grantPublish(taskDefinition.taskRole);
+
     const grafanaConfigRoot = path.join(__dirname, 'grafana');
     const renderGrafanaConfig = (contents: string) => contents
       .replace(/__AWS_ACCOUNT_ID__/g, this.account)
       .replace(/__AWS_REGION__/g, this.region)
-      .replace(/__MULE_LOG_GROUP__/g, `/mule/${props.configuration.branchName}/runtime-1`);
+      .replace(/__MULE_LOG_GROUP__/g, `/mule/${props.configuration.branchName}/runtime-1`)
+      .replace(/__SNS_TOPIC_ARN__/g, alertTopicArn);
     const dashboard = renderGrafanaConfig(
       fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards/mule-runtime-logs.json'), 'utf8'),
     );
@@ -112,6 +124,12 @@ export class GrafanaStack extends Stack {
         '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml',
         renderGrafanaConfig(
           fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/mule-runtime-errors.yaml'), 'utf8'),
+        ),
+      ],
+      [
+        '/var/lib/grafana/provisioning/alerting/sns-contact-point.yaml',
+        renderGrafanaConfig(
+          fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/sns-contact-point.yaml'), 'utf8'),
         ),
       ],
       ['/var/lib/grafana/dashboards/mule-runtime-logs.json', dashboard],
@@ -183,6 +201,9 @@ export class GrafanaStack extends Stack {
     });
     new CfnOutput(this, 'GrafanaAdminSecretArn', {
       value: adminPassword.secretArn,
+    });
+    new CfnOutput(this, 'GrafanaAlertTopicArn', {
+      value: alertTopic.topicArn,
     });
   }
 }
