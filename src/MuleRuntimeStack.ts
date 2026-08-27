@@ -49,16 +49,16 @@ export class MuleRuntimeStack extends Stack {
 
     const kmsKey = new Key(this, 'MuleRuntimeKmsKey');
     const queueIdentifiers = [
-      'mule-generic-queue',
-      'mule-fis-nijm-verkooporders',
-      'mule-fis-nijm-documenten',
-      'mule-karelstad-fs-bestanden',
-      'mule-gws-aanvragen',
-      'mule-gws-db-aanvragen',
-      'mule-gws-db-verzilvering',
+      'Mule-Generic-Queue',
+      'Mule-Fis-Nijm-Papi-Verkooporders',
+      'Mule-Fis-Nijm-Papi-Documenten',
+      'Mule-Karelstad-Fs-Sapi-Bestanden',
+      'Mule-Gws-Sapi-Aanvragen',
+      'Mule-Gws-Db-Sapi-Aanvragen',
+      'Mule-Gws-Db-Sapi-Verzilvering',
     ];
-    const queues = queueIdentifiers.map((identifier, index) => {
-      const queueWithDlq = new QueueWithDlq(this, `MuleQueueWithDlq${index}`, {
+    const queues = queueIdentifiers.map((identifier) => {
+      const queueWithDlq = new QueueWithDlq(this, `MuleQueueWithDlq${identifier}`, {
         identifier,
         kmsKey,
       });
