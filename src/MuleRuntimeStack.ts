@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect, QueueWithDlq } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Duration, RemovalPolicy, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_logs as logs } from 'aws-cdk-lib';
+import { Aspects, Duration, Fn, RemovalPolicy, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_logs as logs, aws_amazonmq as amazonmq } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
@@ -45,6 +45,36 @@ export class MuleRuntimeStack extends Stack {
 
     this.cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
       vpc: this.vpc,
+    });
+
+    const brokerUser = new Secret(this, 'ActiveMQUserSecret', {
+      generateSecretString: {
+        passwordLength: 20,
+        // Minimum 12 characters, at least 4 unique characters.
+        // Can't contain commas (,), colons (:), equals signs (=), spaces or non-printable ASCII characters.
+        excludeCharacters: ',:= "\'\/@',
+      },
+    });
+
+    const messageQueueSecurityGroup = new ec2.SecurityGroup(this, 'MessageQueueSecurityGroup', {
+      vpc: this.vpc,
+      // allowAllOutbound: false,
+      description: 'Security group for ActiveMQ message queue',
+    });
+
+    const privateSubnetIds = this.vpc.privateSubnets.map(subnet => subnet.subnetId);
+    const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
+      brokerName: 'MuleMessageQueue',
+      deploymentMode: 'ACTIVE_STANDBY_MULTI_AZ',
+      engineType: 'ACTIVEMQ',
+      hostInstanceType: 'mq.m7g.medium',
+      publiclyAccessible: false,
+      securityGroups: [messageQueueSecurityGroup.securityGroupId],
+      subnetIds: privateSubnetIds.slice(0, 2),
+      users: [{
+        username: 'admin',
+        password: brokerUser.secretValue.toString(),
+      }],
     });
 
     const kmsKey = new Key(this, 'MuleRuntimeKmsKey');
@@ -189,6 +219,8 @@ export class MuleRuntimeStack extends Stack {
           // Set heap size as a percentage of container memory, and configure metaspace
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
           MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
+          ACTIVEMQ_OPENWIRE_ENDPOINT: Fn.select(0, cfnBroker.attrOpenWireEndpoints),
+          ACTIVEMQ_USERNAME: 'admin',
           ...Object.fromEntries(queues.flatMap(({ identifier, queue, dlq }) => {
             const environmentPrefix = identifier.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
             return [
@@ -206,6 +238,7 @@ export class MuleRuntimeStack extends Stack {
           ANYPOINT_ENV_ID: ecs.Secret.fromSsmParameter(envIdParam),
           MULE_KEYSTORE_PASSWORD: ecs.Secret.fromSecretsManager(keystorePassword),
           MULE_TRUSTSTORE_PASSWORD: ecs.Secret.fromSecretsManager(truststorePassword),
+          ACTIVEMQ_PASSWORD: ecs.Secret.fromSecretsManager(brokerUser),
         },
       });
 
@@ -215,6 +248,7 @@ export class MuleRuntimeStack extends Stack {
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
+      brokerUser.grantRead(taskDefinition.obtainExecutionRole());
 
       for (const { queue, dlq } of queues) {
         queue.grantConsumeMessages(taskDefinition.taskRole);
@@ -258,6 +292,9 @@ export class MuleRuntimeStack extends Stack {
         healthCheckGracePeriod: Duration.seconds(300),
         enableExecuteCommand: true,
       });
+
+      // Allow ECS service group to connect to the ActiveMQ OpenWire SSL endpoint.
+      ecsService.connections.allowTo(messageQueueSecurityGroup, ec2.Port.tcp(61617));
 
       if (previousService) {
         ecsService.node.addDependency(previousService);
