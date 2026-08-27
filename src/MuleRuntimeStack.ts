@@ -67,7 +67,8 @@ export class MuleRuntimeStack extends Stack {
       brokerName: 'MuleMessageQueue',
       deploymentMode: 'ACTIVE_STANDBY_MULTI_AZ',
       engineType: 'ACTIVEMQ',
-      hostInstanceType: 'mq.m7g.medium',
+      // TODO: not ready for production!
+      hostInstanceType: 'mq.t3.micro',
       publiclyAccessible: false,
       securityGroups: [messageQueueSecurityGroup.securityGroupId],
       subnetIds: privateSubnetIds.slice(0, 2),
