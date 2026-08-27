@@ -48,12 +48,27 @@ export class MuleRuntimeStack extends Stack {
     });
 
     const kmsKey = new Key(this, 'MuleRuntimeKmsKey');
-    const MuleQueueWithDlq = new QueueWithDlq(this, 'MuleQueueWithDlq', {
-      identifier: 'mule-generic-queue',
-      kmsKey: kmsKey,
+    const queueIdentifiers = [
+      'mule-generic-queue',
+      'mule-fis-nijm-verkooporders',
+      'mule-fis-nijm-documenten',
+      'mule-karelstad-fs-bestanden',
+      'mule-gws-aanvragen',
+      'mule-gws-db-aanvragen',
+      'mule-gws-db-verzilvering',
+    ];
+    const queues = queueIdentifiers.map((identifier, index) => {
+      const queueWithDlq = new QueueWithDlq(this, `MuleQueueWithDlq${index}`, {
+        identifier,
+        kmsKey,
+      });
+
+      return {
+        identifier,
+        queue: queueWithDlq.queue,
+        dlq: queueWithDlq.dlq,
+      };
     });
-    const mainQueue = MuleQueueWithDlq.queue;
-    const deadLetterQueue = MuleQueueWithDlq.dlq;
 
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
     const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
@@ -173,11 +188,16 @@ export class MuleRuntimeStack extends Stack {
           MULE_KEYSTORE: keyStore.secretArn,
           // Set heap size as a percentage of container memory, and configure metaspace
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
-          SQS_QUEUE_URL: mainQueue.queueUrl,
-          SQS_QUEUE_NAME: mainQueue.queueName,
-          SQS_DEAD_LETTER_QUEUE_URL: deadLetterQueue.queueUrl,
-          SQS_DEAD_LETTER_QUEUE_NAME: deadLetterQueue.queueName,
           MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
+          ...Object.fromEntries(queues.flatMap(({ identifier, queue, dlq }) => {
+            const environmentPrefix = identifier.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+            return [
+              [`SQS_${environmentPrefix}_URL`, queue.queueUrl],
+              [`SQS_${environmentPrefix}_NAME`, queue.queueName],
+              [`SQS_${environmentPrefix}_DLQ_URL`, dlq.queueUrl],
+              [`SQS_${environmentPrefix}_DLQ_NAME`, dlq.queueName],
+            ];
+          })),
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -196,10 +216,12 @@ export class MuleRuntimeStack extends Stack {
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
 
-      mainQueue.grantConsumeMessages(taskDefinition.taskRole);
-      mainQueue.grantSendMessages(taskDefinition.taskRole);
-      deadLetterQueue.grantConsumeMessages(taskDefinition.taskRole);
-      deadLetterQueue.grantSendMessages(taskDefinition.taskRole);
+      for (const { queue, dlq } of queues) {
+        queue.grantConsumeMessages(taskDefinition.taskRole);
+        queue.grantSendMessages(taskDefinition.taskRole);
+        dlq.grantConsumeMessages(taskDefinition.taskRole);
+        dlq.grantSendMessages(taskDefinition.taskRole);
+      }
 
       // all mule secrets with the format of "/${Statics.projectName}/mule/credentials/" have enough IAM policy
       taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
