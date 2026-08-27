@@ -91,6 +91,12 @@ export class MuleRuntimeStack extends Stack {
       const queueWithDlq = new QueueWithDlq(this, `MuleQueueWithDlq${identifier}`, {
         identifier,
         kmsKey,
+        queueProps: {
+          queueName: `${identifier}-queue.fifo`,
+        },
+        dlqQueueProps: {
+          queueName: `${identifier}-dlq.fifo`,
+        },
       });
 
       return {
