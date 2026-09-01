@@ -69,7 +69,7 @@ export class MuleRuntimeStack extends Stack {
       engineType: 'ACTIVEMQ',
       // TODO: not ready for production!
       hostInstanceType: 'mq.t3.micro',
-      publiclyAccessible: false,
+      publiclyAccessible: true,
       securityGroups: [messageQueueSecurityGroup.securityGroupId],
       subnetIds: privateSubnetIds.slice(0, 2),
       users: [{
