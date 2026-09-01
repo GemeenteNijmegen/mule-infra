@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Duration, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_sqs as sqs } from 'aws-cdk-lib';
+import { Aspects, Duration, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
@@ -46,8 +46,6 @@ export class MuleRuntimeStack extends Stack {
       vpc: this.vpc,
     });
 
-    const queue = new sqs.Queue(this, 'MuleAppQueue');
-
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
     const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
     const clientSecret = Secret.fromSecretNameV2(this, 'MuleAnypointClientSecret', Statics.secretMuleAnypointClientSecret);
@@ -55,7 +53,6 @@ export class MuleRuntimeStack extends Stack {
     const keyStore = Secret.fromSecretNameV2(this, 'MuleKeyStore', Statics.secretMuleKeyStore);
     const keystorePassword = Secret.fromSecretNameV2(this, 'MuleKeystorePassword', Statics.secretMuleKeystorePassword);
     const truststorePassword = Secret.fromSecretNameV2(this, 'MuleTruststorePassword', Statics.secretMuleTruststorePassword);
-    const secretsNameBase = Secret.fromSecretNameV2(this, 'MuleSecretsNameBase', Statics.secretMuleCredentials);
 
     const clientIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId);
     const orgIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId);
@@ -158,9 +155,6 @@ export class MuleRuntimeStack extends Stack {
           MULE_KEYSTORE: keyStore.secretArn,
           // Set heap size as a percentage of container memory, and configure metaspace
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
-          SQS_QUEUE_URL: queue.queueUrl,
-          SQS_QUEUE_NAME: queue.queueName,
-          MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -175,19 +169,9 @@ export class MuleRuntimeStack extends Stack {
       licenseSecret.grantRead(taskDefinition.taskRole);
       trustStore.grantRead(taskDefinition.taskRole);
       keyStore.grantRead(taskDefinition.taskRole);
-      queue.grantConsumeMessages(taskDefinition.taskRole);
-      queue.grantSendMessages(taskDefinition.taskRole);
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
-
-      // all mule secrets with the format of "/${Statics.projectName}/mule/credentials/" have enough IAM policy
-      taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
-        actions: ['secretsmanager:GetSecretValue'],
-        resources: [
-          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${Statics.secretMuleCredentials}*`,
-        ],
-      }));
 
       container.addPortMappings(
         {
