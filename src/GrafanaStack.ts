@@ -175,7 +175,7 @@ export class GrafanaStack extends Stack {
     const service = new ecs.FargateService(this, 'GrafanaService', {
       cluster: props.cluster,
       taskDefinition,
-      desiredCount: 1,
+      desiredCount: 0,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [grafanaSg],
       healthCheckGracePeriod: Duration.seconds(120),
