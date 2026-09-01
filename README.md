@@ -81,3 +81,30 @@ Registration now works with the mule cli and is handled purely in the docker ent
     - The server registration is executed automatically using the API in the `entrypoint.sh` script during the initial startup.
         - The generated `${MULE_HOME}/conf/mule-agent.yml` file, along with the Mule apps, is stored on an attached EFS volume. This ensures the configuration persists across container restarts and deployments, so the server only needs to be registered once.
 - The service is updated.
+
+## VPC Proxy (Tinyproxy)
+
+An on-demand tinyproxy ECS task definition is deployed in `development` and `acceptance` environments to forward local laptop traffic to VPC / internal resources via AWS SSM port-forwarding.
+
+### Usage
+
+Run [`scripts/start-proxy.sh`](file:///Users/esperkuijs/git/mule-infra/scripts/start-proxy.sh) to spin up an on-demand proxy task and establish an SSM tunnel:
+
+```bash
+# Default (port 8888, eu-central-1)
+./scripts/start-proxy.sh
+
+# With a specific AWS profile or custom local port
+./scripts/start-proxy.sh --profile <aws-profile> --port 8888
+```
+
+The script automatically handles the lifecycle of the temporary ECS container and cleans it up upon exit (`Ctrl+C`).
+
+### Testing Connection
+
+Once active, test connectivity to internal VPC endpoints:
+
+```bash
+curl http://nijm-cko-t-001.gn.karelstad.nl --proxy http://localhost:8888 -v
+```
+

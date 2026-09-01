@@ -1,10 +1,11 @@
+import * as crypto from 'crypto';
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Stack, StackProps, aws_ecs as ecs, aws_ec2 as ec2, aws_efs as efs, aws_iam as iam, Duration } from 'aws-cdk-lib';
+import { Aspects, Duration, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancer, ApplicationProtocol, MutualAuthenticationMode, TrustStore } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { ARecord, CnameRecord, HostedZone, IHostedZone, PrivateHostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -17,13 +18,17 @@ interface MuleRuntimeStackProps extends StackProps, Configurable { }
 
 
 export class MuleRuntimeStack extends Stack {
+  public readonly vpc: ec2.IVpc;
+  public readonly cluster: ecs.ICluster;
+
   constructor(scope: Construct, id: string, private readonly props: MuleRuntimeStackProps) {
     super(scope, id, props);
     Aspects.of(this).add(new PermissionsBoundaryAspect());
-    const vpc = new GemeenteNijmegenVpc(this, 'vpc');
+    const vpcWrapper = new GemeenteNijmegenVpc(this, 'vpc');
+    this.vpc = vpcWrapper.vpc;
 
     const fileSystem = new efs.FileSystem(this, 'MuleEfs', {
-      vpc: vpc.vpc,
+      vpc: this.vpc,
       encrypted: true,
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
@@ -35,9 +40,10 @@ export class MuleRuntimeStack extends Stack {
       domainName: '*.' + hostedZone.zoneName,
       validation: CertificateValidation.fromDns(hostedZone),
     });
+    this.addCnameRecords(hostedZone, this.props.configuration.cnames);
 
-    const cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
-      vpc: vpc.vpc,
+    this.cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
+      vpc: this.vpc,
     });
 
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
@@ -51,6 +57,34 @@ export class MuleRuntimeStack extends Stack {
     const clientIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId);
     const orgIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId);
     const envIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointEnvId', Statics.ssmMuleAnypointEnvId);
+
+    const karelstadPrivateZone = new PrivateHostedZone(this, 'KarelstadPrivateHostedZone', {
+      zoneName: 'gn.karelstad.nl',
+      vpc: this.vpc,
+    });
+
+    const karelstadHosts: Record<string, string> = {
+      // Acceptance / Test Servers
+      'nijm-cko-t-001': '10.8.109.132',
+      'oosterstreek': '10.8.109.38',
+      'ouwerkerk': '10.8.107.96',
+      'opperdellen': '10.8.109.98',
+      'data-test': '192.168.10.10',
+      // Production Servers
+      'nijm-cko-p-001': '10.8.109.137',
+      'ottersum': '10.8.106.23',
+      'oosterbierum': '10.8.109.37',
+      'oudwoude': '10.8.107.95',
+      'data': '192.168.10.20',
+    };
+
+    Object.entries(karelstadHosts).forEach(([recordName, ip]) => {
+      new ARecord(this, `KarelstadRecord-${recordName}`, {
+        zone: karelstadPrivateZone,
+        recordName,
+        target: RecordTarget.fromIpAddresses(ip),
+      });
+    });
 
     const loadBalancerTargets = [];
     let previousService: ecs.FargateService | undefined;
@@ -113,13 +147,14 @@ export class MuleRuntimeStack extends Stack {
       const container = taskDefinition.addContainer('MuleRuntimeContainer', {
         image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, Statics.muleDockerImageHash),
         logging: ecs.LogDrivers.awsLogs({ streamPrefix: `mule-runtime-${i}` }),
+        memoryLimitMiB: props.configuration.memoryLimitMiB,
         environment: {
           SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
           SERVER_NAME: `mule-${props.configuration.branchName.toLowerCase()}-${i}`,
           MULE_TRUSTSTORE: trustStore.secretArn,
           MULE_KEYSTORE: keyStore.secretArn,
-          // Increase the default size to prevent OutOfMemoryError when deploying an app
-          MULE_JVM_ARGS: '-M-XX:MaxMetaspaceSize=1024m -M-XX:MetaspaceSize=512m',
+          // Set heap size as a percentage of container memory, and configure metaspace
+          MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -152,7 +187,7 @@ export class MuleRuntimeStack extends Stack {
       });
 
       const ecsService = new ecs.FargateService(this, `Service${i}`, {
-        cluster,
+        cluster: this.cluster,
         taskDefinition,
         desiredCount: props.configuration.taskCount === 0 ? 0 : 1,
         minHealthyPercent: props.configuration.minHealthyPercent,
@@ -181,7 +216,7 @@ export class MuleRuntimeStack extends Stack {
     }
 
     const lb = new ApplicationLoadBalancer(this, 'LB', {
-      vpc: vpc.vpc,
+      vpc: this.vpc,
       internetFacing: true,
     });
 
@@ -214,6 +249,9 @@ export class MuleRuntimeStack extends Stack {
         path: '/health',
         healthyHttpCodes: '200',
         healthyThresholdCount: 2,
+        unhealthyThresholdCount: 5,
+        timeout: Duration.seconds(10),
+        interval: Duration.seconds(30),
       },
     });
   }
@@ -228,6 +266,23 @@ export class MuleRuntimeStack extends Stack {
         this,
         Statics.accountHostedzoneName,
       ),
+    });
+  }
+
+  /**
+   * Add CNAME records to the hosted zone based on the configuration provided
+   * @param hostedZone
+   * @param cnameRecords
+   */
+  addCnameRecords(hostedZone: IHostedZone, cnameRecords?: { [key: string]: string }) {
+    if (!cnameRecords) { return; };
+    Object.entries(cnameRecords).forEach(entry => {
+      const logicalId = crypto.createHash('md5').update(entry[0] + entry[1]).digest('hex').substring(0, 10);
+      new CnameRecord(this, `cname-record-${logicalId}`, {
+        recordName: entry[0],
+        domainName: entry[1],
+        zone: hostedZone,
+      });
     });
   }
 }
