@@ -226,7 +226,12 @@ export class MuleRuntimeStack extends Stack {
           // Set heap size as a percentage of container memory, and configure metaspace
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
           MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
-          ACTIVEMQ_OPENWIRE_ENDPOINT: Fn.select(0, cfnBroker.attrOpenWireEndpoints),
+          // Ready-to-use ActiveMQ broker URL for the Mule JMS connector (used verbatim as
+          // <jms:factory-configuration brokerUrl="${ACTIVEMQ_BROKER_URL}" />).
+          // Amazon MQ only exposes TLS OpenWire endpoints (ssl://...:61617) - there is no plaintext
+          // tcp:// listener. The failover: transport lists both instances of the ACTIVE_STANDBY_MULTI_AZ
+          // deployment so the client reconnects automatically across failover and maintenance windows.
+          ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?randomize=false&timeout=3000`,
           ACTIVEMQ_USERNAME: 'admin',
           ...Object.fromEntries(queues.flatMap(({ identifier, queue, dlq }) => {
             const environmentPrefix = identifier.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
