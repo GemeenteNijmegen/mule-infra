@@ -1,11 +1,10 @@
 import * as crypto from 'crypto';
-import { GemeenteNijmegenVpc, PermissionsBoundaryAspect, QueueWithDlq } from '@gemeentenijmegen/aws-constructs';
+import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import { Aspects, Duration, Fn, RemovalPolicy, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_logs as logs, aws_amazonmq as amazonmq } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancer, ApplicationProtocol, MutualAuthenticationMode, TrustStore } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import { Key } from 'aws-cdk-lib/aws-kms';
 import { ARecord, CnameRecord, HostedZone, IHostedZone, PrivateHostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
 import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
@@ -78,35 +77,6 @@ export class MuleRuntimeStack extends Stack {
       }],
     });
 
-    const kmsKey = new Key(this, 'MuleRuntimeKmsKey');
-    const queueIdentifiers = [
-      'Mule-Generic-Queue',
-      'Mule-Fis-Nijm-Papi-Verkooporders',
-      'Mule-Fis-Nijm-Papi-Documenten',
-      'Mule-Karelstad-Fs-Sapi-Bestanden',
-      'Mule-Gws-Sapi-Aanvragen',
-      'Mule-Gws-Db-Sapi-Aanvragen',
-      'Mule-Gws-Db-Sapi-Verzilvering',
-    ];
-    const queues = queueIdentifiers.map((identifier) => {
-      const queueWithDlq = new QueueWithDlq(this, `MuleQueueWithDlq${identifier}`, {
-        identifier,
-        kmsKey,
-        queueProps: {
-          queueName: `${identifier}-queue.fifo`,
-        },
-        dlqQueueProps: {
-          queueName: `${identifier}-dlq.fifo`,
-        },
-      });
-
-      return {
-        identifier,
-        queue: queueWithDlq.queue,
-        dlq: queueWithDlq.dlq,
-      };
-    });
-
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
     const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
     const clientSecret = Secret.fromSecretNameV2(this, 'MuleAnypointClientSecret', Statics.secretMuleAnypointClientSecret);
@@ -114,7 +84,6 @@ export class MuleRuntimeStack extends Stack {
     const keyStore = Secret.fromSecretNameV2(this, 'MuleKeyStore', Statics.secretMuleKeyStore);
     const keystorePassword = Secret.fromSecretNameV2(this, 'MuleKeystorePassword', Statics.secretMuleKeystorePassword);
     const truststorePassword = Secret.fromSecretNameV2(this, 'MuleTruststorePassword', Statics.secretMuleTruststorePassword);
-    const secretsNameBase = Secret.fromSecretNameV2(this, 'MuleSecretsNameBase', Statics.secretMuleCredentials);
 
     const clientIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId);
     const orgIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId);
@@ -225,7 +194,6 @@ export class MuleRuntimeStack extends Stack {
           MULE_KEYSTORE: keyStore.secretArn,
           // Set heap size as a percentage of container memory, and configure metaspace
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
-          MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
           // Ready-to-use ActiveMQ broker URL for the Mule JMS connector (used verbatim as
           // <jms:factory-configuration brokerUrl="${ACTIVEMQ_BROKER_URL}" />).
           // Amazon MQ only exposes TLS OpenWire endpoints (ssl://...:61617) - there is no plaintext
@@ -233,15 +201,6 @@ export class MuleRuntimeStack extends Stack {
           // deployment so the client reconnects automatically across failover and maintenance windows.
           ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?randomize=false&timeout=3000`,
           ACTIVEMQ_USERNAME: 'admin',
-          ...Object.fromEntries(queues.flatMap(({ identifier, queue, dlq }) => {
-            const environmentPrefix = identifier.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
-            return [
-              [`SQS_${environmentPrefix}_URL`, queue.queueUrl],
-              [`SQS_${environmentPrefix}_NAME`, queue.queueName],
-              [`SQS_${environmentPrefix}_DLQ_URL`, dlq.queueUrl],
-              [`SQS_${environmentPrefix}_DLQ_NAME`, dlq.queueName],
-            ];
-          })),
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -261,21 +220,6 @@ export class MuleRuntimeStack extends Stack {
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
       brokerUser.grantRead(taskDefinition.obtainExecutionRole());
-
-      for (const { queue, dlq } of queues) {
-        queue.grantConsumeMessages(taskDefinition.taskRole);
-        queue.grantSendMessages(taskDefinition.taskRole);
-        dlq.grantConsumeMessages(taskDefinition.taskRole);
-        dlq.grantSendMessages(taskDefinition.taskRole);
-      }
-
-      // all mule secrets with the format of "/${Statics.projectName}/mule/credentials/" have enough IAM policy
-      taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
-        actions: ['secretsmanager:GetSecretValue'],
-        resources: [
-          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${Statics.secretMuleCredentials}*`,
-        ],
-      }));
 
       container.addPortMappings(
         {
