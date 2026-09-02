@@ -4,7 +4,9 @@ groups:
   - orgId: 1
     name: mule-runtime-errors
     folder: Mule
-    interval: 1m
+    # Evaluate every 5m. Each evaluation runs a CloudWatch Logs Insights StartQuery
+    # (billed per GB scanned), so a shorter interval multiplies cost directly.
+    interval: 5m
     rules:
       - uid: mule-runtime-errors
         title: Mule runtime errors
@@ -12,7 +14,11 @@ groups:
         data:
           - refId: A
             relativeTimeRange:
-              from: 604800
+              # 10 min lookback (was 604800 = 7 days). Logs Insights scans every byte in
+              # the range on every run; a 7-day window re-scanned each minute is what
+              # caused the ~EUR 2.7k CloudWatch bill. 10m covers two full bin(5m) buckets
+              # and gives overlap over the 5m interval to absorb log-ingestion lag.
+              from: 600
               to: 0
             datasourceUid: cloudwatch
             model:
