@@ -118,7 +118,7 @@ groups:
             | sort @timestamp desc
             | limit 50
         labels:
-          severity: warning
+          severity: critical
         notification_settings:
           receiver: mule-runtime-errors-sns
         isPaused: false
