@@ -216,13 +216,20 @@ export class GrafanaStack extends Stack {
     });
     securityGroup.addIngressRule(clientSecurityGroup, ec2.Port.tcp(3100), 'Loki HTTP API');
 
-    const config = fs.readFileSync(path.join(__dirname, 'grafana/loki/loki-config.yaml'), 'utf8')
-      .replace(/__LOKI_BUCKET__/g, bucket.bucketName)
-      .replace(/__AWS_REGION__/g, this.region);
+    // The bucket name is a CloudFormation token that only resolves at deploy
+    // time. Substituting it into the config string and then base64-encoding
+    // would freeze the unresolved "${Token[...]}" marker into the blob, so Loki
+    // would receive that literal string as its bucket name and fail with
+    // "InvalidBucketName". Keep the placeholders in the blob and let the
+    // container fill them in at start-up from environment variables, whose
+    // values CloudFormation does resolve.
+    const config = fs.readFileSync(path.join(__dirname, 'grafana/loki/loki-config.yaml'), 'utf8');
     const command = [
       'set -eu',
       'mkdir -p /etc/loki',
-      `echo '${Buffer.from(config).toString('base64')}' | base64 -d > /etc/loki/loki-config.yaml`,
+      `echo '${Buffer.from(config).toString('base64')}' | base64 -d`
+        + ' | sed -e "s|__LOKI_BUCKET__|$LOKI_BUCKET|g" -e "s|__AWS_REGION__|$AWS_REGION|g"'
+        + ' > /etc/loki/loki-config.yaml',
       'exec /usr/bin/loki -config.file=/etc/loki/loki-config.yaml',
     ].join('\n');
 
@@ -241,6 +248,10 @@ export class GrafanaStack extends Stack {
       image: ecs.ContainerImage.fromRegistry(Statics.lokiDockerImage),
       entryPoint: ['/bin/sh', '-c'],
       command: [command],
+      environment: {
+        LOKI_BUCKET: bucket.bucketName,
+        AWS_REGION: this.region,
+      },
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'loki', logGroup }),
       healthCheck: {
         command: ['CMD-SHELL', 'wget -q -O - http://localhost:3100/ready || exit 1'],
