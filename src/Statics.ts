@@ -59,4 +59,9 @@ export class Statics {
   static readonly ssmProxySubnetId = `/${Statics.projectName}/proxy/subnet-id`;
   static readonly ssmProxySecurityGroupId = `/${Statics.projectName}/proxy/security-group-id`;
 
+  // MARK: ActiveMQ web console (reachable via scripts/mq-console.sh)
+  static readonly activeMqConsolePort = 8162;
+  static readonly ssmActiveMqConsoleUrls = `/${Statics.projectName}/activemq/console-urls`;
+  static readonly ssmActiveMqAdminSecretArn = `/${Statics.projectName}/activemq/admin-secret-arn`;
+
 }

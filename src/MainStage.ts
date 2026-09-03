@@ -34,6 +34,7 @@ export class MainStage extends Stage {
         configuration: props.configuration,
         vpc: muleStack.vpc,
         cluster: muleStack.cluster,
+        messageQueueSecurityGroup: muleStack.messageQueueSecurityGroup,
       });
     }
 

@@ -108,3 +108,22 @@ Once active, test connectivity to internal VPC endpoints:
 curl http://nijm-cko-t-001.gn.karelstad.nl --proxy http://localhost:8888 -v
 ```
 
+## Amazon MQ Web Console
+
+The managed ActiveMQ broker is **not** publicly accessible; its web console
+(port 8162) is only reachable from inside the VPC. Use
+[`scripts/mq-console.sh`](scripts/mq-console.sh), which tunnels to the console
+through the same on-demand tinyproxy task:
+
+```bash
+./scripts/mq-console.sh --profile <aws-profile>
+```
+
+The script starts the proxy task, opens an SSM tunnel on `localhost:8888`,
+probes both `ACTIVE_STANDBY_MULTI_AZ` instances to find the active one, and
+prints its console URL plus the `admin` credentials (read from Secrets Manager).
+Set your browser's HTTP/HTTPS proxy to `http://localhost:8888` and open the
+printed URL — the browser tunnels `CONNECT <broker-host>:8162` through the proxy,
+so the broker's TLS certificate validates normally. Press `Ctrl+C` to tear down
+the tunnel and the task.
+

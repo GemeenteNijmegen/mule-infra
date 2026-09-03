@@ -20,6 +20,8 @@ interface MuleRuntimeStackProps extends StackProps, Configurable { }
 export class MuleRuntimeStack extends Stack {
   public readonly vpc: ec2.IVpc;
   public readonly cluster: ecs.ICluster;
+  public readonly messageQueueSecurityGroup: ec2.SecurityGroup;
+  public readonly activeMqConsoleUrls: string[];
 
   constructor(scope: Construct, id: string, private readonly props: MuleRuntimeStackProps) {
     super(scope, id, props);
@@ -60,6 +62,7 @@ export class MuleRuntimeStack extends Stack {
       // allowAllOutbound: false,
       description: 'Security group for ActiveMQ message queue',
     });
+    this.messageQueueSecurityGroup = messageQueueSecurityGroup;
 
     const privateSubnetIds = this.vpc.privateSubnets.map(subnet => subnet.subnetId);
     const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
@@ -68,13 +71,37 @@ export class MuleRuntimeStack extends Stack {
       engineType: 'ACTIVEMQ',
       // TODO: not ready for production!
       hostInstanceType: 'mq.t3.micro',
-      publiclyAccessible: true,
+      // Kept private: the web console and OpenWire endpoints are reached from
+      // inside the VPC only. Developers tunnel to the console via
+      // scripts/mq-console.sh (SSM + the on-demand tinyproxy task).
+      publiclyAccessible: false,
       securityGroups: [messageQueueSecurityGroup.securityGroupId],
       subnetIds: privateSubnetIds.slice(0, 2),
       users: [{
         username: 'admin',
         password: brokerUser.secretValue.toString(),
       }],
+    });
+
+    // Amazon MQ serves the ActiveMQ web console on port 8162 of each broker
+    // instance host. ACTIVE_STANDBY_MULTI_AZ has two instances (-1 and -2); only
+    // the currently active one serves the console, so publish both URLs and let
+    // scripts/mq-console.sh probe which is live. Derived from the broker id
+    // (cfnBroker.ref) so nothing is hard-coded.
+    this.activeMqConsoleUrls = [1, 2].map(
+      instance => `https://${cfnBroker.ref}-${instance}.mq.${this.region}.amazonaws.com:${Statics.activeMqConsolePort}`,
+    );
+
+    new StringParameter(this, 'ActiveMqConsoleUrls', {
+      parameterName: Statics.ssmActiveMqConsoleUrls,
+      stringValue: this.activeMqConsoleUrls.join(','),
+      description: 'ActiveMQ web console URLs for both AZ instances; reach them via scripts/mq-console.sh',
+    });
+
+    new StringParameter(this, 'ActiveMqAdminSecretArn', {
+      parameterName: Statics.ssmActiveMqAdminSecretArn,
+      stringValue: brokerUser.secretArn,
+      description: 'Secrets Manager ARN of the ActiveMQ "admin" user credentials',
     });
 
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
