@@ -81,6 +81,7 @@ export class MuleRuntimeStack extends Stack {
       users: [{
         username: 'admin',
         password: brokerUser.secretValue.toString(),
+        consoleAccess: true,
       }],
     });
 
