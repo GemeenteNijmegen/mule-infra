@@ -66,7 +66,8 @@ export class MuleRuntimeStack extends Stack {
 
     const privateSubnetIds = this.vpc.privateSubnets.map(subnet => subnet.subnetId);
     const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
-      brokerName: 'MuleMessageQueue',
+      // TODO: rename this
+      brokerName: 'MuleMessageQueueDev',
       deploymentMode: 'ACTIVE_STANDBY_MULTI_AZ',
       engineType: 'ACTIVEMQ',
       // TODO: not ready for production!
