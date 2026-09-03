@@ -58,4 +58,28 @@ describe('GrafanaStack', () => {
       Endpoint: 'e.kuijs@nijmegen.nl',
     });
   });
+
+  test('deploys Loki and provisions its datasource', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const template = Template.fromStack(grafanaStack);
+
+    template.resourceCountIs('AWS::S3::Bucket', 1);
+    template.resourceCountIs('AWS::ServiceDiscovery::PrivateDnsNamespace', 1);
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Command: Match.arrayWith([
+            Match.stringLikeRegexp('/var/lib/grafana/provisioning/datasources/loki.yaml'),
+          ]),
+        }),
+      ]),
+    });
+  });
 });

@@ -12,6 +12,8 @@ import {
   aws_ecs as ecs,
   aws_iam as iam,
   aws_logs as logs,
+  aws_s3 as s3,
+  aws_servicediscovery as servicediscovery,
   aws_sns as sns,
   aws_sns_subscriptions as subscriptions,
 } from 'aws-cdk-lib';
@@ -101,12 +103,15 @@ export class GrafanaStack extends Stack {
     alertTopic.addSubscription(new subscriptions.EmailSubscription('e.kuijs@nijmegen.nl'));
     alertTopic.grantPublish(taskDefinition.taskRole);
 
+    const lokiUrl = this.createLoki(props, grafanaSg);
+
     const grafanaConfigRoot = path.join(__dirname, 'grafana');
     const renderGrafanaConfig = (contents: string) => contents
       .replace(/__AWS_ACCOUNT_ID__/g, this.account)
       .replace(/__AWS_REGION__/g, this.region)
       .replace(/__MULE_LOG_GROUP__/g, `/mule/${props.configuration.branchName}/runtime-1`)
-      .replace(/__SNS_TOPIC_ARN__/g, alertTopicArn);
+      .replace(/__SNS_TOPIC_ARN__/g, alertTopicArn)
+      .replace(/__LOKI_URL__/g, lokiUrl);
     const dashboard = renderGrafanaConfig(
       fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards/mule-runtime-logs.json'), 'utf8'),
     );
@@ -133,6 +138,10 @@ export class GrafanaStack extends Stack {
         ),
       ],
       ['/var/lib/grafana/dashboards/mule-runtime-logs.json', dashboard],
+      [
+        '/var/lib/grafana/provisioning/datasources/loki.yaml',
+        renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/datasources/loki.yaml'), 'utf8')),
+      ],
     ]);
     const provisioningScript = [
       'set -eu',
@@ -205,5 +214,79 @@ export class GrafanaStack extends Stack {
     new CfnOutput(this, 'GrafanaAlertTopicArn', {
       value: alertTopic.topicArn,
     });
+  }
+
+  /**
+   * Single-node Loki on Fargate with an S3 backend, reachable in-VPC at
+   * loki.mule-obs.local:3100. Returns the base URL for the Grafana datasource.
+   */
+  private createLoki(props: GrafanaStackProps, clientSecurityGroup: ec2.SecurityGroup): string {
+    const namespace = new servicediscovery.PrivateDnsNamespace(this, 'ObservabilityNamespace', {
+      name: 'mule-obs.local',
+      vpc: props.vpc,
+    });
+
+    const bucket = new s3.Bucket(this, 'LokiChunks', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      lifecycleRules: [{ expiration: Duration.days(21) }],
+    });
+
+    const securityGroup = new ec2.SecurityGroup(this, 'LokiSecurityGroup', {
+      vpc: props.vpc,
+      description: 'Security group for the Loki ECS task',
+      allowAllOutbound: true,
+    });
+    securityGroup.addIngressRule(clientSecurityGroup, ec2.Port.tcp(3100), 'Loki HTTP API');
+
+    const config = fs.readFileSync(path.join(__dirname, 'grafana/loki/loki-config.yaml'), 'utf8')
+      .replace(/__LOKI_BUCKET__/g, bucket.bucketName)
+      .replace(/__AWS_REGION__/g, this.region);
+    const command = [
+      'set -eu',
+      'mkdir -p /etc/loki',
+      `echo '${Buffer.from(config).toString('base64')}' | base64 -d > /etc/loki/loki-config.yaml`,
+      'exec /usr/bin/loki -config.file=/etc/loki/loki-config.yaml',
+    ].join('\n');
+
+    const logGroup = new logs.LogGroup(this, 'LokiLogGroup', {
+      logGroupName: `/grafana/${props.configuration.branchName}-loki`,
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    const taskDefinition = new ecs.FargateTaskDefinition(this, 'LokiTaskDefinition', {
+      cpu: 512,
+      memoryLimitMiB: 1024,
+    });
+    bucket.grantReadWrite(taskDefinition.taskRole);
+    taskDefinition.addContainer('LokiContainer', {
+      image: ecs.ContainerImage.fromRegistry(Statics.lokiDockerImage),
+      entryPoint: ['/bin/sh', '-c'],
+      command: [command],
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'loki', logGroup }),
+      healthCheck: {
+        command: ['CMD-SHELL', 'wget -q -O - http://localhost:3100/ready || exit 1'],
+        interval: Duration.seconds(30),
+        timeout: Duration.seconds(5),
+        retries: 3,
+        startPeriod: Duration.seconds(90),
+      },
+    }).addPortMappings({ containerPort: 3100, protocol: ecs.Protocol.TCP });
+
+    new ecs.FargateService(this, 'LokiService', {
+      cluster: props.cluster,
+      taskDefinition,
+      desiredCount: 1,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+      securityGroups: [securityGroup],
+      cloudMapOptions: { name: 'loki', cloudMapNamespace: namespace },
+      enableExecuteCommand: true,
+    });
+
+    return `http://loki.${namespace.namespaceName}:3100`;
   }
 }
