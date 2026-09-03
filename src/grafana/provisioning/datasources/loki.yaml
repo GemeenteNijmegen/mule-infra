@@ -5,6 +5,7 @@ datasources:
     uid: loki
     type: loki
     access: proxy
+    isDefault: true
     url: __LOKI_URL__
     jsonData:
       maximumLines: 1000

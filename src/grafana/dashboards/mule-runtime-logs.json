@@ -6,8 +6,8 @@
   "panels": [
     {
       "datasource": {
-        "type": "cloudwatch",
-        "uid": "cloudwatch"
+        "type": "loki",
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {},
@@ -33,22 +33,11 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
-            "uid": "cloudwatch"
+            "type": "loki",
+            "uid": "loki"
           },
-          "expression": "fields @timestamp, @message, @logStream\n| sort @timestamp desc\n| limit 100",
-          "id": "",
-          "logGroups": [
-            {
-              "accountId": "__AWS_ACCOUNT_ID__",
-              "arn": "arn:aws:logs:__AWS_REGION__:__AWS_ACCOUNT_ID__:log-group:__MULE_LOG_GROUP__:*",
-              "name": "__MULE_LOG_GROUP__"
-            }
-          ],
-          "queryMode": "Logs",
-          "refId": "A",
-          "region": "__AWS_REGION__",
-          "statsGroups": []
+          "expr": "{job=\"mule\"} | json",
+          "refId": "A"
         }
       ],
       "title": "Mule runtime 1 logs",
@@ -56,8 +45,8 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
-        "uid": "cloudwatch"
+        "type": "loki",
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {},
@@ -83,22 +72,11 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
-            "uid": "cloudwatch"
+            "type": "loki",
+            "uid": "loki"
           },
-          "expression": "fields @timestamp, @message, @logStream\n| filter priority = \"ERROR\"\n| sort @timestamp desc\n| limit 100",
-          "id": "",
-          "logGroups": [
-            {
-              "accountId": "__AWS_ACCOUNT_ID__",
-              "arn": "arn:aws:logs:__AWS_REGION__:__AWS_ACCOUNT_ID__:log-group:__MULE_LOG_GROUP__:*",
-              "name": "__MULE_LOG_GROUP__"
-            }
-          ],
-          "queryMode": "Logs",
-          "refId": "A",
-          "region": "__AWS_REGION__",
-          "statsGroups": []
+          "expr": "{job=\"mule\"} | json | priority=\"ERROR\"",
+          "refId": "A"
         }
       ],
       "title": "Mule runtime 1 error logs",
@@ -106,8 +84,8 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
-        "uid": "cloudwatch"
+        "type": "loki",
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -138,7 +116,9 @@
       "id": 2,
       "options": {
         "legend": {
-          "calcs": ["sum"],
+          "calcs": [
+            "sum"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -151,23 +131,12 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
-            "uid": "cloudwatch"
+            "type": "loki",
+            "uid": "loki"
           },
-          "expression": "filter priority = \"ERROR\" and tracePoint = \"EXCEPTION\"\n| stats count(*) as errors by bin(5m), applicationName",
-          "id": "",
-          "logGroups": [
-            {
-              "accountId": "__AWS_ACCOUNT_ID__",
-              "arn": "arn:aws:logs:__AWS_REGION__:__AWS_ACCOUNT_ID__:log-group:__MULE_LOG_GROUP__:*",
-              "name": "__MULE_LOG_GROUP__"
-            }
-          ],
-          "queryLanguage": "CWLI",
-          "queryMode": "Logs",
-          "refId": "A",
-          "region": "__AWS_REGION__",
-          "statsGroups": ["bin(5m)", "applicationName"]
+          "expr": "sum by (applicationName) (count_over_time({job=\"mule\"} | json | priority=\"ERROR\" | tracePoint=\"EXCEPTION\" [$__interval]))",
+          "legendFormat": "{{applicationName}}",
+          "refId": "A"
         }
       ],
       "title": "Errors over time by application",
@@ -175,8 +144,8 @@
     },
     {
       "datasource": {
-        "type": "cloudwatch",
-        "uid": "cloudwatch"
+        "type": "loki",
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -207,7 +176,9 @@
       "id": 3,
       "options": {
         "legend": {
-          "calcs": ["sum"],
+          "calcs": [
+            "sum"
+          ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -220,23 +191,12 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
-            "uid": "cloudwatch"
+            "type": "loki",
+            "uid": "loki"
           },
-          "expression": "filter priority = \"INFO\"\n| stats count(*) as messages by bin(5m), applicationName",
-          "id": "",
-          "logGroups": [
-            {
-              "accountId": "__AWS_ACCOUNT_ID__",
-              "arn": "arn:aws:logs:__AWS_REGION__:__AWS_ACCOUNT_ID__:log-group:__MULE_LOG_GROUP__:*",
-              "name": "__MULE_LOG_GROUP__"
-            }
-          ],
-          "queryLanguage": "CWLI",
-          "queryMode": "Logs",
-          "refId": "A",
-          "region": "__AWS_REGION__",
-          "statsGroups": ["bin(5m)", "applicationName"]
+          "expr": "sum by (applicationName) (count_over_time({job=\"mule\"} | json | priority=\"INFO\" [$__interval]))",
+          "legendFormat": "{{applicationName}}",
+          "refId": "A"
         }
       ],
       "title": "Messages over time by application",
@@ -246,7 +206,7 @@
   "refresh": "30s",
   "schemaVersion": 41,
   "tags": [
-    "cloudwatch",
+    "loki",
     "mule"
   ],
   "time": {

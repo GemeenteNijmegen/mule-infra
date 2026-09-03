@@ -4,8 +4,9 @@ groups:
   - orgId: 1
     name: mule-runtime-errors
     folder: Mule
-    # Evaluate every 5m. Each evaluation runs a CloudWatch Logs Insights StartQuery
-    # (billed per GB scanned), so a shorter interval multiplies cost directly.
+    # Evaluate every 5m against Loki. refId A counts ERROR-level lines per Mule
+    # application over a 10m window (from: 600) - two 5m evaluation cycles of
+    # overlap to absorb log-ingestion lag.
     interval: 5m
     rules:
       - uid: mule-runtime-errors
@@ -14,45 +15,21 @@ groups:
         data:
           - refId: A
             relativeTimeRange:
-              # 10 min lookback (was 604800 = 7 days). Logs Insights scans every byte in
-              # the range on every run; a 7-day window re-scanned each minute is what
-              # caused the ~EUR 2.7k CloudWatch bill. 10m covers two full bin(5m) buckets
-              # and gives overlap over the 5m interval to absorb log-ingestion lag.
               from: 600
               to: 0
-            datasourceUid: cloudwatch
+            datasourceUid: loki
             model:
               datasource:
-                type: cloudwatch
-                uid: cloudwatch
-              dimensions: {}
-              expression: |
-                fields @timestamp, applicationName, @message
-                | filter strcontains(@message, "error")
-                | stats count(*) as errors by bin(5m), applicationName
-              id: ""
+                type: loki
+                uid: loki
+              expr: |
+                sum by (applicationName) (
+                  count_over_time({job="mule"} | json | priority="ERROR" [$__range])
+                )
               intervalMs: 1000
-              label: ""
-              logGroups:
-                - accountId: "__AWS_ACCOUNT_ID__"
-                  arn: "arn:aws:logs:__AWS_REGION__:__AWS_ACCOUNT_ID__:log-group:__MULE_LOG_GROUP__:*"
-                  name: "__MULE_LOG_GROUP__"
-              matchExact: false
               maxDataPoints: 43200
-              metricEditorMode: 0
-              metricName: ""
-              metricQueryType: 0
-              namespace: AWS/ECS
-              period: ""
-              queryLanguage: CWLI
-              queryMode: Logs
               refId: A
-              region: "__AWS_REGION__"
-              sqlExpression: ""
-              statistic: Average
-              statsGroups:
-                - bin(5m)
-                - applicationName
+              queryType: instant
           - refId: B
             queryType: expression
             relativeTimeRange:
@@ -116,13 +93,10 @@ groups:
         annotations:
           __dashboardUid__: mule-runtime-logs
           __panelId__: "1"
-          summary: 'Mule runtime errors for {{ $labels.applicationName }}'
-          description: '{{ $labels.applicationName }} logged {{ $values.B.Value }} errors in the evaluation window.'
+          summary: "Mule runtime errors for {{ $labels.applicationName }}"
+          description: "{{ $labels.applicationName }} logged {{ $values.B.Value }} errors in the evaluation window."
           logs_query: |
-            fields @timestamp, applicationName, @logStream, @message
-            | filter applicationName = "{{ $labels.applicationName }}" and strcontains(@message, "error")
-            | sort @timestamp desc
-            | limit 50
+            {job="mule"} | json | applicationName="{{ $labels.applicationName }}" | priority="ERROR"
         labels:
           severity: critical
         notification_settings:

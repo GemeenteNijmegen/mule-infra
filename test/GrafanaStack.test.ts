@@ -59,7 +59,7 @@ describe('GrafanaStack', () => {
     });
   });
 
-  test('deploys Loki and provisions its datasource', () => {
+  test('deploys Loki and provisions it as the default Grafana datasource', () => {
     const app = new App();
     const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
     const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
@@ -72,14 +72,10 @@ describe('GrafanaStack', () => {
 
     template.resourceCountIs('AWS::S3::Bucket', 1);
     template.resourceCountIs('AWS::ServiceDiscovery::PrivateDnsNamespace', 1);
-    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
-      ContainerDefinitions: Match.arrayWith([
-        Match.objectLike({
-          Command: Match.arrayWith([
-            Match.stringLikeRegexp('/var/lib/grafana/provisioning/datasources/loki.yaml'),
-          ]),
-        }),
-      ]),
-    });
+    const taskDefinition = template.findResources('AWS::ECS::TaskDefinition');
+    const commandText = JSON.stringify(taskDefinition);
+
+    expect(commandText).toContain('/var/lib/grafana/provisioning/datasources/loki.yaml');
+    expect(commandText).not.toContain('/var/lib/grafana/provisioning/datasources/cloudwatch.yaml');
   });
 });

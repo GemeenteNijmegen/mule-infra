@@ -10,7 +10,6 @@ import {
   StackProps,
   aws_ec2 as ec2,
   aws_ecs as ecs,
-  aws_iam as iam,
   aws_logs as logs,
   aws_s3 as s3,
   aws_servicediscovery as servicediscovery,
@@ -29,7 +28,7 @@ export interface GrafanaStackProps extends StackProps, Configurable {
 }
 
 /**
- * Test Grafana service with a pre-provisioned CloudWatch data source.
+ * Grafana service with a pre-provisioned Loki data source.
  *
  * Grafana is exposed through an HTTP ALB using its AWS-provided DNS name.
  */
@@ -76,24 +75,6 @@ export class GrafanaStack extends Stack {
       cpu: 512,
       memoryLimitMiB: 1024,
     });
-    taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
-      actions: [
-        'cloudwatch:DescribeAlarms',
-        'cloudwatch:GetMetricData',
-        'cloudwatch:GetMetricStatistics',
-        'cloudwatch:ListMetrics',
-        'logs:DescribeLogGroups',
-        'logs:DescribeQueries',
-        'logs:DescribeLogStreams',
-        'logs:FilterLogEvents',
-        'logs:GetLogEvents',
-        'logs:GetQueryResults',
-        'logs:StartQuery',
-        'logs:StopQuery',
-        'tag:GetResources',
-      ],
-      resources: ['*'],
-    }));
     const alertTopicName = `${Statics.projectName}-grafana-alerts-${props.configuration.branchName}`;
     const alertTopicArn = `arn:aws:sns:${this.region}:${this.account}:${alertTopicName}`;
     const alertTopic = new sns.Topic(this, 'GrafanaAlertTopic', {
@@ -107,20 +88,13 @@ export class GrafanaStack extends Stack {
 
     const grafanaConfigRoot = path.join(__dirname, 'grafana');
     const renderGrafanaConfig = (contents: string) => contents
-      .replace(/__AWS_ACCOUNT_ID__/g, this.account)
       .replace(/__AWS_REGION__/g, this.region)
-      .replace(/__MULE_LOG_GROUP__/g, `/mule/${props.configuration.branchName}/runtime-1`)
       .replace(/__SNS_TOPIC_ARN__/g, alertTopicArn)
       .replace(/__LOKI_URL__/g, lokiUrl);
     const dashboard = renderGrafanaConfig(
       fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards/mule-runtime-logs.json'), 'utf8'),
     );
     const provisioningFiles = new Map<string, string>([
-      [
-        '/var/lib/grafana/provisioning/datasources/cloudwatch.yaml',
-        fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/datasources/cloudwatch.yaml'), 'utf8')
-          .replace(/__AWS_REGION__/g, this.region),
-      ],
       [
         '/var/lib/grafana/provisioning/dashboards/mule.yaml',
         fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/dashboards/mule.yaml'), 'utf8'),
@@ -184,7 +158,7 @@ export class GrafanaStack extends Stack {
     const service = new ecs.FargateService(this, 'GrafanaService', {
       cluster: props.cluster,
       taskDefinition,
-      desiredCount: 0,
+      desiredCount: 1,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [grafanaSg],
       healthCheckGracePeriod: Duration.seconds(120),

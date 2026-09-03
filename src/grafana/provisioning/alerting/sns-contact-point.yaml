@@ -29,14 +29,10 @@ contactPoints:
             Alert: {{ .GeneratorURL }}
             Silence: {{ .SilenceURL }}
 
-            Logs Insights query:
-            fields @timestamp, applicationName, @logStream, @message
+            Loki query (Explore, last 50 lines):
+            {job="mule"} | json | priority="ERROR"
             {{ if index .Labels "applicationName" -}}
-            | filter applicationName = "{{ index .Labels "applicationName" }}" and strcontains(@message, "error")
-            {{ else -}}
-            | filter strcontains(@message, "error")
+            | applicationName="{{ index .Labels "applicationName" }}"
             {{ end -}}
-            | sort @timestamp desc
-            | limit 50
 
             {{ end }}
