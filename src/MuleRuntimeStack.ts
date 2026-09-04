@@ -113,6 +113,7 @@ export class MuleRuntimeStack extends Stack {
     const keyStore = Secret.fromSecretNameV2(this, 'MuleKeyStore', Statics.secretMuleKeyStore);
     const keystorePassword = Secret.fromSecretNameV2(this, 'MuleKeystorePassword', Statics.secretMuleKeystorePassword);
     const truststorePassword = Secret.fromSecretNameV2(this, 'MuleTruststorePassword', Statics.secretMuleTruststorePassword);
+    const secretsNameBase = Secret.fromSecretNameV2(this, 'MuleSecretsNameBase', Statics.secretMuleCredentials);
 
     const clientIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId);
     const orgIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId);
@@ -230,6 +231,7 @@ export class MuleRuntimeStack extends Stack {
           // deployment so the client reconnects automatically across failover and maintenance windows.
           ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?randomize=false&timeout=3000`,
           ACTIVEMQ_USERNAME: 'admin',
+          MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -249,6 +251,14 @@ export class MuleRuntimeStack extends Stack {
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
       brokerUser.grantRead(taskDefinition.obtainExecutionRole());
+
+      // all mule secrets with the format of "/${Statics.projectName}/mule/credentials/" have enough IAM policy
+      taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${Statics.secretMuleCredentials}*`,
+        ],
+      }));
 
       container.addPortMappings(
         {

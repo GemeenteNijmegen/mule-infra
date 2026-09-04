@@ -18,6 +18,14 @@ export class Statics {
   static readonly secretMuleLicense = `/${Statics.projectName}/mule/license`;
   static readonly secretMuleKeystorePassword = `/${Statics.projectName}/mule/keystorepassword`;
   static readonly secretMuleTruststorePassword = `/${Statics.projectName}/mule/truststorepassword`;
+  static readonly secretMuleCredentials = `/${Statics.projectName}/mule/credentials`;
+  static readonly muleCredentialNames: string[] = [
+    // Add Mule application credential names here, e.g.:
+    // 'notifynl-nijm-sapi',
+    'hello-world',
+    'notify-nl',
+    'corsa',
+  ];
 
   // MARK: environments
   static readonly buildEnvironment = {
