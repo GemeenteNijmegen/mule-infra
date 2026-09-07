@@ -59,6 +59,46 @@ describe('GrafanaStack', () => {
     });
   });
 
+  test('the error alert stays quiet when there are no errors', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const rule = provisionedFile(
+      Template.fromStack(grafanaStack),
+      '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml',
+    );
+
+    // NoData turned every quiet evaluation into a mailed DatasourceNoData
+    // alert, so this must never go back.
+    expect(rule).toContain('noDataState: OK');
+    expect(rule).not.toContain('noDataState: NoData');
+    expect(rule).toContain('applicationName!=""');
+  });
+
+  test('the alert mail links to the dashboard for the failing application', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const template = Template.fromStack(grafanaStack);
+    const rule = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml');
+    const contactPoint = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/sns-contact-point.yaml');
+
+    expect(rule).toContain('var-applicationName={{ $labels.applicationName }}');
+    // The mail builds the link from Grafana's own base URL plus the annotation.
+    expect(contactPoint).toContain('{{ $grafana }}{{ index .Annotations "dashboard_path" }}');
+    expect(rule).toContain('- applicationName');
+  });
+
   test('deploys Loki and provisions it as the default Grafana datasource', () => {
     const app = new App();
     const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
@@ -120,3 +160,16 @@ describe('GrafanaStack', () => {
     });
   });
 });
+
+/**
+ * Grafana's provisioning files are base64 blobs in the container command;
+ * decode the one written to `filePath`.
+ */
+function provisionedFile(template: Template, filePath: string): string {
+  const commands = JSON.stringify(template.findResources('AWS::ECS::TaskDefinition'));
+  const match = new RegExp(`echo '([A-Za-z0-9+/=]+)' \\| base64 -d > '${filePath}'`).exec(commands);
+  if (!match) {
+    throw new Error(`No provisioned file found at ${filePath}`);
+  }
+  return Buffer.from(match[1], 'base64').toString('utf8');
+}

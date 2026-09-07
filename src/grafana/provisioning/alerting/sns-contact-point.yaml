@@ -11,28 +11,30 @@ contactPoints:
           topic_arn: "__SNS_TOPIC_ARN__"
           sigv4:
             region: "__AWS_REGION__"
-          subject: "Mule Grafana alert"
+          # The rule groups by application, so the subject can name it. SNS
+          # subjects are capped at 100 characters and allow no newlines.
+          subject: "Mule errors: {{ if .CommonLabels.applicationName }}{{ .CommonLabels.applicationName }}{{ else }}runtime alert{{ end }} ({{ .Status }})"
+          # .ExternalURL (GF_SERVER_ROOT_URL) is captured up here because the
+          # per-alert scope inside the range cannot see it.
           message: |
+            {{ $grafana := .ExternalURL -}}
             {{ range .Alerts.Firing -}}
-            Mule runtime errors
+            {{ if index .Labels "applicationName" -}}
+            {{ index .Annotations "description" }}
 
-            Application: {{ if index .Labels "applicationName" }}{{ index .Labels "applicationName" }}{{ else }}unknown{{ end }}
-            Count/value: {{ .ValueString }}
             Started: {{ .StartsAt }}
 
-            {{ with .PanelURL -}}
-            Logs panel: {{ . }}
-            {{ end -}}
-            {{ with .DashboardURL -}}
-            Dashboard: {{ . }}
-            {{ end -}}
+            Debug in Grafana - opens the dashboard filtered to this application.
+            Click a correlation ID in "Errors by application" to load that
+            request's full trace:
+            {{ $grafana }}{{ index .Annotations "dashboard_path" }}
+
+            Explore query:
+            {{ index .Annotations "logs_query" }}
+            Silence this alert: {{ .SilenceURL }}
+            {{ else -}}
+            Grafana could not evaluate the Mule runtime error alert ({{ index .Labels "alertname" }}).
+            Loki is probably unreachable, so Mule errors are NOT being detected right now.
             Alert: {{ .GeneratorURL }}
-            Silence: {{ .SilenceURL }}
-
-            Loki query (Explore, last 50 lines):
-            {job="mule"} | json | priority="ERROR"
-            {{ if index .Labels "applicationName" -}}
-            | applicationName="{{ index .Labels "applicationName" }}"
-            {{ end -}}
-
             {{ end }}
+            {{ end -}}

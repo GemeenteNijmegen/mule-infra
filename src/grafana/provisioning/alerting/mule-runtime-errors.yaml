@@ -22,9 +22,10 @@ groups:
               datasource:
                 type: loki
                 uid: loki
+              # applicationName!="" drops runtime chatter, which carries no app.
               expr: |
                 sum by (applicationName) (
-                  count_over_time({job="mule"} | json | priority="ERROR" [$__range])
+                  count_over_time({job="mule"} | json | applicationName!="" | priority="ERROR" [$__range])
                 )
               intervalMs: 1000
               maxDataPoints: 43200
@@ -87,18 +88,32 @@ groups:
               maxDataPoints: 43200
               refId: C
               type: threshold
-        noDataState: NoData
+        # No errors is an empty Loki result, not a zero. NoData here mailed a
+        # synthetic DatasourceNoData alert on every quiet evaluation.
+        noDataState: OK
+        # An unqueryable Loki still notifies; the mail renders it separately.
         execErrState: Error
-        for: 1m
+        # The 10m overlapping window absorbs ingestion lag; waiting costs 5m.
+        for: 0s
         annotations:
           __dashboardUid__: mule-runtime-logs
-          __panelId__: "1"
+          # Errors over time; annotations render on a time series, not a table.
+          __panelId__: "2"
           summary: "Mule runtime errors for {{ $labels.applicationName }}"
           description: "{{ $labels.applicationName }} logged {{ $values.B.Value }} errors in the evaluation window."
-          logs_query: |
-            {job="mule"} | json | applicationName="{{ $labels.applicationName }}" | priority="ERROR"
+          # Appended to Grafana's external URL by the contact point: this app's
+          # dashboard, where the errors table links each correlationId to its
+          # trace. Relative window - templates cannot do time arithmetic.
+          dashboard_path: "/d/mule-runtime-logs/mule-runtime-logs?var-applicationName={{ $labels.applicationName }}&var-correlationId=&var-search=&from=now-3h&to=now"
+          logs_query: '{job="mule"} | json | applicationName="{{ $labels.applicationName }}" | priority="ERROR"'
         labels:
           severity: critical
         notification_settings:
           receiver: mule-runtime-errors-sns
+          # One mail per application, each with its own subject and link.
+          # Grafana rejects a group_by without grafana_folder and alertname.
+          group_by:
+            - grafana_folder
+            - alertname
+            - applicationName
         isPaused: false
