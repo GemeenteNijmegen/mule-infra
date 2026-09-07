@@ -43,6 +43,17 @@ PROFILE_ARGS=()
 AWS="aws ${PROFILE_ARGS[*]+${PROFILE_ARGS[*]}} --region $REGION"
 PROXY="http://localhost:${LOCAL_PORT}"
 
+# -- Preflight: 'aws ssm start-session' needs the Session Manager plugin -------
+# Without it the tunnel command fails instantly; because it is launched in the
+# background further down, that failure would otherwise be silent.
+if ! command -v session-manager-plugin >/dev/null 2>&1; then
+  echo "ERROR: 'session-manager-plugin' is not installed or not on PATH." >&2
+  echo "       'aws ssm start-session' cannot open the tunnel without it." >&2
+  echo "       Install:  brew install --cask session-manager-plugin" >&2
+  echo "       Docs: https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html" >&2
+  exit 1
+fi
+
 # -- Read discovery parameters from SSM -------------------------------------- -
 echo "Reading discovery parameters from SSM Parameter Store..."
 
@@ -81,14 +92,19 @@ TASK_ID="${TASK_ARN##*/}"
 
 # -- Ensure the tunnel and task are cleaned up on exit ---------------------- --
 SSM_PID=""
+SSM_LOG="${TMPDIR:-/tmp}/mq-console-ssm.$$.log"
 CLEANED=0
 cleanup() {
   [[ "$CLEANED" == "1" ]] && return 0
   CLEANED=1
   echo ""
-  [[ -n "$SSM_PID" ]] && kill "$SSM_PID" >/dev/null 2>&1 || true
+  if [[ -n "$SSM_PID" ]]; then
+    pkill -P "$SSM_PID" >/dev/null 2>&1 || true
+    kill "$SSM_PID" >/dev/null 2>&1 || true
+  fi
   echo "Stopping ECS task $TASK_ID..."
   $AWS ecs stop-task --cluster "$CLUSTER_NAME" --task "$TASK_ARN" >/dev/null 2>&1 || true
+  rm -f "$SSM_LOG"
   echo "   Done."
 }
 trap cleanup EXIT INT TERM
@@ -109,14 +125,38 @@ RUNTIME_ID=$($AWS ecs describe-tasks \
 SSM_TARGET="ecs:${CLUSTER_NAME}_${TASK_ID}_${RUNTIME_ID}"
 
 # -- Open the SSM port-forward in the background -------------------------- ----
+# The session-manager-plugin writes progress to stdout and, in some versions,
+# exits immediately when that stdout is not a TTY -- which is what happens to a
+# background job redirected to /dev/null, causing the script to stop silently.
+# Run it under `script` so it keeps a PTY, and capture its output to a log file
+# (not /dev/null) so any failure is visible below instead of being swallowed.
 echo ""
 echo "Opening SSM port-forward on ${PROXY}..."
-$AWS ssm start-session \
-  --target "$SSM_TARGET" \
-  --document-name AWS-StartPortForwardingSession \
-  --parameters "{\"portNumber\":[\"8888\"],\"localPortNumber\":[\"${LOCAL_PORT}\"]}" \
-  >/dev/null 2>&1 &
+
+SSM_CMD=($AWS ssm start-session
+  --target "$SSM_TARGET"
+  --document-name AWS-StartPortForwardingSession
+  --parameters "{\"portNumber\":[\"8888\"],\"localPortNumber\":[\"${LOCAL_PORT}\"]}")
+
+if [[ "$(uname)" == "Darwin" ]] && command -v script >/dev/null 2>&1; then
+  script -q "$SSM_LOG" "${SSM_CMD[@]}" >/dev/null 2>&1 &
+else
+  "${SSM_CMD[@]}" >"$SSM_LOG" 2>&1 &
+fi
 SSM_PID=$!
+
+# Give the tunnel a moment to come up -- or fail -- and surface any error.
+sleep 2
+if ! kill -0 "$SSM_PID" 2>/dev/null; then
+  echo "" >&2
+  echo "ERROR: the SSM port-forward exited immediately. Plugin output:" >&2
+  echo "---" >&2
+  sed 's/\r$//' "$SSM_LOG" >&2 2>/dev/null || cat "$SSM_LOG" >&2 || true
+  echo "---" >&2
+  echo "If this looks like a plugin issue, compare versions between machines:" >&2
+  echo "  session-manager-plugin --version" >&2
+  exit 1
+fi
 
 # -- Probe the console URLs through the proxy ---------------------------- -----
 # This waits for the tunnel to come up and identifies the active broker
