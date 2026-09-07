@@ -110,7 +110,7 @@ describe('GrafanaStack', () => {
       PolicyDocument: {
         Statement: Match.arrayWith([
           Match.objectLike({
-            Action: ['logs:DescribeLogGroups', 'logs:DescribeLogStreams', 'logs:GetLogEvents'],
+            Action: ['logs:DescribeLogGroups', 'logs:DescribeLogStreams', 'logs:FilterLogEvents', 'logs:GetLogEvents'],
             Resource: Match.arrayWith([
               'arn:aws:logs:eu-central-1:123456789012:log-group:/mule/development/*',
             ]),

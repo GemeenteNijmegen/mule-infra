@@ -296,11 +296,14 @@ export class GrafanaStack extends Stack {
     });
 
     // Read-only discovery and fetch of the Mule log groups. AWS does not charge
-    // for these List/Get calls - only ingestion, storage and Insights scans cost.
+    // for these read APIs - only ingestion, storage and Logs Insights scans
+    // cost. autodiscover polling uses FilterLogEvents; the rest cover Alloy's
+    // other fetch modes so a config tweak doesn't need an IAM change.
     taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
       actions: [
         'logs:DescribeLogGroups',
         'logs:DescribeLogStreams',
+        'logs:FilterLogEvents',
         'logs:GetLogEvents',
       ],
       resources: [
