@@ -59,6 +59,7 @@ export class Statics {
   static readonly muleDockerImageHash = '80a493a7156142b369b7ab364387fed6744dcfe6';
   static readonly grafanaDockerImage = 'grafana/grafana:13.1.3';
   static readonly lokiDockerImage = 'grafana/loki:3.5.3';
+  static readonly alloyDockerImage = 'grafana/alloy:v1.19.2';
 
   // MARK: proxy task (on-demand tinyproxy)
   static readonly proxyContainerPort = 8888;

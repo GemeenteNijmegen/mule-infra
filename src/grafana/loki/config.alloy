@@ -1,0 +1,55 @@
+// Ships the Mule runtime logs that the ECS awslogs driver writes to CloudWatch
+// into the Loki running alongside this container in the same task.
+//
+// This sidecar exists so Grafana never queries an AWS API directly. Cost is
+// bounded by this always-on container plus Loki's capped S3 retention; there is
+// no per-query CloudWatch charge that a misconfiguration or a growing dataset
+// could turn into an unexpected bill.
+
+otelcol.receiver.awscloudwatch "mule" {
+	region = sys.env("AWS_REGION")
+
+	logs {
+		// Poll a minute at a time in small pages so a backlog can never turn
+		// into one huge request.
+		poll_interval          = "1m"
+		max_events_per_request = 1000
+
+		groups {
+			autodiscover {
+				// Matches /mule/<branch>/runtime-1, runtime-2, ... so extra
+				// runtime tasks are picked up without a config change.
+				prefix = sys.env("MULE_LOG_GROUP_PREFIX")
+				limit  = 10
+			}
+		}
+	}
+
+	output {
+		logs = [otelcol.processor.batch.mule.input]
+	}
+}
+
+otelcol.processor.batch "mule" {
+	output {
+		logs = [otelcol.exporter.loki.mule.input]
+	}
+}
+
+// Each CloudWatch event becomes a Loki entry whose line is the raw Mule log
+// string, so Grafana's `| json` parser and the error alert keep working. The
+// CloudWatch log group and stream ride along as structured metadata.
+otelcol.exporter.loki "mule" {
+	forward_to = [loki.write.mule.receiver]
+}
+
+loki.write "mule" {
+	endpoint {
+		url = "http://localhost:3100/loki/api/v1/push"
+	}
+
+	// The dashboards and the error alert select {job="mule"}.
+	external_labels = {
+		"job" = "mule",
+	}
+}

@@ -10,6 +10,7 @@ import {
   StackProps,
   aws_ec2 as ec2,
   aws_ecs as ecs,
+  aws_iam as iam,
   aws_logs as logs,
   aws_s3 as s3,
   aws_servicediscovery as servicediscovery,
@@ -241,7 +242,9 @@ export class GrafanaStack extends Stack {
 
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'LokiTaskDefinition', {
       cpu: 512,
-      memoryLimitMiB: 1024,
+      // Loki plus the Alloy log-shipper sidecar share this task; 1 GiB was tight
+      // for both. Bump to 1024 CPU as well if the task shows CPU pressure.
+      memoryLimitMiB: 2048,
     });
     bucket.grantReadWrite(taskDefinition.taskRole);
     taskDefinition.addContainer('LokiContainer', {
@@ -261,6 +264,50 @@ export class GrafanaStack extends Stack {
         startPeriod: Duration.seconds(90),
       },
     }).addPortMappings({ containerPort: 3100, protocol: ecs.Protocol.TCP });
+
+    // Alloy rides in the Loki task as a non-essential sidecar: it pulls the Mule
+    // runtime logs that ECS writes to CloudWatch and pushes them to Loki over
+    // localhost. Keeping the reader in-cluster means Grafana never calls an AWS
+    // API directly, so a misconfiguration or a growing dataset can't run up an
+    // unbounded CloudWatch bill - spend is capped by this container plus Loki's
+    // S3 lifecycle expiry.
+    const alloyConfig = fs.readFileSync(path.join(__dirname, 'grafana/loki/config.alloy'), 'utf8');
+    const alloyCommand = [
+      'set -eu',
+      `echo '${Buffer.from(alloyConfig).toString('base64')}' | base64 -d > /tmp/config.alloy`,
+      // otelcol.receiver.awscloudwatch is an experimental Alloy component, so it
+      // only loads with --stability.level=experimental. The image tag is pinned
+      // in Statics, so a breaking change can't land until we bump it on purpose.
+      'exec alloy run /tmp/config.alloy --stability.level=experimental'
+        + ' --disable-reporting --storage.path=/tmp/alloy --server.http.listen-addr=127.0.0.1:12345',
+    ].join('\n');
+    taskDefinition.addContainer('LokiAlloyContainer', {
+      image: ecs.ContainerImage.fromRegistry(Statics.alloyDockerImage),
+      // A broken Alloy config or a CloudWatch outage must not take Loki down.
+      essential: false,
+      entryPoint: ['/bin/sh', '-c'],
+      command: [alloyCommand],
+      environment: {
+        AWS_REGION: this.region,
+        // Matches /mule/<branch>/runtime-1, runtime-2, ... (see MuleRuntimeStack).
+        MULE_LOG_GROUP_PREFIX: `/mule/${props.configuration.branchName}/`,
+      },
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'alloy', logGroup }),
+    });
+
+    // Read-only discovery and fetch of the Mule log groups. AWS does not charge
+    // for these List/Get calls - only ingestion, storage and Insights scans cost.
+    taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: [
+        'logs:DescribeLogGroups',
+        'logs:DescribeLogStreams',
+        'logs:GetLogEvents',
+      ],
+      resources: [
+        `arn:aws:logs:${this.region}:${this.account}:log-group:/mule/${props.configuration.branchName}/*`,
+        `arn:aws:logs:${this.region}:${this.account}:log-group:/mule/${props.configuration.branchName}/*:*`,
+      ],
+    }));
 
     new ecs.FargateService(this, 'LokiService', {
       cluster: props.cluster,

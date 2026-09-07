@@ -78,4 +78,45 @@ describe('GrafanaStack', () => {
     expect(commandText).toContain('/var/lib/grafana/provisioning/datasources/loki.yaml');
     expect(commandText).not.toContain('/var/lib/grafana/provisioning/datasources/cloudwatch.yaml');
   });
+
+  test('runs an Alloy sidecar that reads the Mule CloudWatch logs into Loki', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const template = Template.fromStack(grafanaStack);
+
+    // Alloy shares the Loki task as a non-essential sidecar.
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Image: Match.stringLikeRegexp('grafana/alloy'),
+          Essential: false,
+          Command: Match.arrayWith([Match.stringLikeRegexp('alloy run /tmp/config.alloy')]),
+          Environment: Match.arrayWith([
+            Match.objectLike({ Name: 'MULE_LOG_GROUP_PREFIX', Value: '/mule/development/' }),
+          ]),
+        }),
+      ]),
+    });
+
+    // The task role may only read the Mule log groups - no direct AWS querying
+    // from Grafana, and nothing that AWS bills per call.
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: ['logs:DescribeLogGroups', 'logs:DescribeLogStreams', 'logs:GetLogEvents'],
+            Resource: Match.arrayWith([
+              'arn:aws:logs:eu-central-1:123456789012:log-group:/mule/development/*',
+            ]),
+          }),
+        ]),
+      },
+    });
+  });
 });
