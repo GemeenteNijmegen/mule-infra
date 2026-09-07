@@ -3,138 +3,100 @@
     "list": []
   },
   "editable": false,
+  "templating": {
+    "list": [
+      {
+        "type": "textbox",
+        "name": "applicationName",
+        "label": "Application (regex)",
+        "description": "Mule applicationName to filter on. Leave as .+ for all apps, or type an exact name / regex.",
+        "query": ".+",
+        "current": { "text": ".+", "value": ".+" },
+        "options": [{ "text": ".+", "value": ".+", "selected": true }]
+      },
+      {
+        "type": "textbox",
+        "name": "correlationId",
+        "label": "Correlation ID",
+        "description": "Set automatically when you click a correlation ID in the 'Errors' or 'Recent correlation IDs' panel. Drives the 'Request trace' panel.",
+        "query": "",
+        "current": { "text": "", "value": "" },
+        "options": [{ "text": "", "value": "", "selected": true }]
+      },
+      {
+        "type": "textbox",
+        "name": "search",
+        "label": "Line contains",
+        "description": "Case-insensitive substring/regex applied to the raw log line.",
+        "query": "",
+        "current": { "text": "", "value": "" },
+        "options": [{ "text": "", "value": "", "selected": true }]
+      }
+    ]
+  },
   "panels": [
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 20,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyJSON": false,
-        "showCommonLabels": false,
-        "showLabels": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{job=\"mule\"} | json",
-          "refId": "A"
-        }
-      ],
-      "title": "Mule runtime 1 logs",
-      "type": "logs"
-    },
-    {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 20,
-        "w": 24,
-        "x": 0,
-        "y": 20
-      },
-      "id": 4,
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyJSON": false,
-        "showCommonLabels": false,
-        "showLabels": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{job=\"mule\"} | json | priority=\"ERROR\"",
-          "refId": "A"
-        }
-      ],
-      "title": "Mule runtime 1 error logs",
-      "type": "logs"
-    },
-    {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Lines per application over time - the baseline 'is traffic flowing' view.",
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": { "mode": "palette-classic" },
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 10,
             "lineWidth": 1,
             "showPoints": "auto",
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            }
+            "stacking": { "group": "A", "mode": "none" }
           },
           "min": 0,
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 40
-      },
-      "id": 2,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 5,
       "options": {
-        "legend": {
-          "calcs": [
-            "sum"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum by (applicationName) (count_over_time({job=\"mule\"} | json | applicationName!=\"\" | applicationName=~\"$applicationName\" [$__auto]))",
+          "legendFormat": "{{applicationName}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Log volume by application",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "ERROR-level lines per application. The 'Mule runtime errors' alert is based on this query.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "stacking": { "group": "A", "mode": "normal" }
           },
-          "expr": "sum by (applicationName) (count_over_time({job=\"mule\"} | json | priority=\"ERROR\" | tracePoint=\"EXCEPTION\" [$__interval]))",
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum by (applicationName) (count_over_time({job=\"mule\"} | json | applicationName!=\"\" | priority=\"ERROR\" | applicationName=~\"$applicationName\" [$__auto]))",
           "legendFormat": "{{applicationName}}",
           "refId": "A"
         }
@@ -143,78 +105,202 @@
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "ERROR-level lines. Click a correlation ID to load that request in the 'Request trace' panel below.",
       "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "lineWidth": 1,
-            "showPoints": "auto",
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            }
-          },
-          "min": 0,
-          "unit": "short"
-        },
-        "overrides": []
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "correlationId" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Trace this request",
+                    "url": "/d/mule-runtime-logs/mule-runtime-logs?var-correlationId=${__data.fields.correlationId}&${applicationName:queryparam}&${search:queryparam}&${__url_time_range}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 50
-      },
-      "id": 3,
-      "options": {
-        "legend": {
-          "calcs": [
-            "sum"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 8 },
+      "id": 1,
+      "options": { "showHeader": true, "cellHeight": "sm" },
       "targets": [
         {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "sum by (applicationName) (count_over_time({job=\"mule\"} | json | priority=\"INFO\" [$__interval]))",
-          "legendFormat": "{{applicationName}}",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{job=\"mule\"} | json | applicationName!=\"\" | priority=\"ERROR\" | applicationName=~\"$applicationName\" |~ \"(?i)$search\"",
           "refId": "A"
         }
       ],
-      "title": "Messages over time by application",
-      "type": "timeseries"
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Line": true, "labels": true, "tsNs": true, "id": true },
+            "indexByName": {
+              "Time": 0,
+              "applicationName": 1,
+              "priority": 2,
+              "message": 3,
+              "correlationId": 4,
+              "tracePoint": 5,
+              "elapsed": 6
+            }
+          }
+        }
+      ],
+      "title": "Errors by application",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "All application JSON log lines. Narrow with the Application and 'Line contains' variables.",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 18 },
+      "id": 3,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyJSON": true,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{job=\"mule\"} | json | applicationName!=\"\" | applicationName=~\"$applicationName\" |~ \"(?i)$search\" | label_format level=priority",
+          "refId": "A"
+        }
+      ],
+      "title": "Logs by application",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Correlation IDs seen in the current time range, busiest first. Click one to load its full trace below.",
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "correlationId" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Trace this request",
+                    "url": "/d/mule-runtime-logs/mule-runtime-logs?var-correlationId=${__data.fields.correlationId}&${applicationName:queryparam}&${search:queryparam}&${__url_time_range}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
+      "id": 6,
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [{ "displayName": "Lines", "desc": true }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "topk(25, sum by (correlationId, applicationName) (count_over_time({job=\"mule\"} | json | applicationName!=\"\" | correlationId!=\"\" | applicationName=~\"$applicationName\" |~ \"(?i)$search\" [$__range])))",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true },
+            "renameByName": { "Value": "Lines" }
+          }
+        }
+      ],
+      "title": "Recent correlation IDs",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Every log line for one correlation ID, oldest first. Empty until you click a correlation ID above or set the Correlation ID variable.",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 38 },
+      "id": 4,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyJSON": true,
+        "showCommonLabels": true,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Ascending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{job=\"mule\"} | json | applicationName!=\"\" | correlationId!=\"\" | correlationId=\"$correlationId\" | label_format level=priority",
+          "refId": "A"
+        }
+      ],
+      "title": "Request trace by correlation ID",
+      "type": "logs"
+    },
+    {
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 },
+      "id": 7,
+      "title": "System / runtime logs",
+      "type": "row",
+      "panels": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "description": "Mule runtime / container lines that carry no applicationName - startup, deployment, connector chatter. Not application logging; kept here so it stays out of the panels above.",
+          "fieldConfig": { "defaults": {}, "overrides": [] },
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 51 },
+          "id": 8,
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "prettifyJSON": true,
+            "showCommonLabels": false,
+            "showLabels": false,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true
+          },
+          "targets": [
+            {
+              "datasource": { "type": "loki", "uid": "loki" },
+              "expr": "{job=\"mule\"} | json | applicationName=\"\" |~ \"(?i)$search\"",
+              "refId": "A"
+            }
+          ],
+          "title": "System / runtime logs",
+          "type": "logs"
+        }
+      ]
     }
   ],
   "refresh": "30s",
   "schemaVersion": 41,
-  "tags": [
-    "loki",
-    "mule"
-  ],
-  "time": {
-    "from": "now-1h",
-    "to": "now"
-  },
+  "tags": ["loki", "mule"],
+  "time": { "from": "now-1h", "to": "now" },
   "timezone": "browser",
   "title": "Mule Runtime Logs",
   "uid": "mule-runtime-logs",
-  "version": 1
+  "version": 3
 }

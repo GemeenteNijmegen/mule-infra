@@ -34,6 +34,21 @@ otelcol.receiver.awscloudwatch "mule" {
 	}
 
 	output {
+		logs = [otelcol.processor.attributes.mule.input]
+	}
+}
+
+// loki.format=raw makes the Loki line the bare Mule JSON so `| json` works,
+// instead of a body/attributes/resources envelope. Drops the CloudWatch
+// group/stream metadata.
+otelcol.processor.attributes "mule" {
+	action {
+		key    = "loki.format"
+		value  = "raw"
+		action = "insert"
+	}
+
+	output {
 		logs = [otelcol.processor.batch.mule.input]
 	}
 }
@@ -45,8 +60,7 @@ otelcol.processor.batch "mule" {
 }
 
 // Each CloudWatch event becomes a Loki entry whose line is the raw Mule log
-// string, so Grafana's `| json` parser and the error alert keep working. The
-// CloudWatch log group and stream ride along as structured metadata.
+// string, so Grafana's `| json` parser and the error alert keep working.
 otelcol.exporter.loki "mule" {
 	forward_to = [loki.write.mule.receiver]
 }
