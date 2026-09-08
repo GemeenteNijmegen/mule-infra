@@ -82,6 +82,45 @@ Registration now works with the mule cli and is handled purely in the docker ent
         - The generated `${MULE_HOME}/conf/mule-agent.yml` file, along with the Mule apps, is stored on an attached EFS volume. This ensures the configuration persists across container restarts and deployments, so the server only needs to be registered once.
 - The service is updated.
 
+## Observability (Grafana, Loki, Alloy)
+
+Mule runtime logs are shipped from CloudWatch into Loki by a Grafana Alloy
+sidecar, so Grafana itself never queries an AWS API directly and the cost stays
+bounded by the always-on containers plus Loki's S3 lifecycle expiry.
+
+```mermaid
+flowchart LR
+    U["Browser"] --> ALB["Public ALB :80"]
+
+    subgraph muleTask["Mule runtime ECS tasks"]
+        MR["Mule runtime container"]
+    end
+
+    MR -- "awslogs driver" --> CW["CloudWatch Logs<br/>/mule/&lt;branch&gt;/runtime-*"]
+
+    subgraph lokiTask["Loki ECS task"]
+        AL["Alloy sidecar<br/>otelcol.receiver.awscloudwatch"]
+        LK["Loki :3100"]
+        AL -- "loki.write over localhost<br/>job=mule" --> LK
+    end
+
+    CW -- "FilterLogEvents<br/>poll 1m, autodiscover" --> AL
+    LK <--> S3[("S3 chunks + index<br/>21 day expiry")]
+
+    subgraph grafanaTask["Grafana ECS task"]
+        GR["Grafana :3000"]
+    end
+
+    ALB --> GR
+    GR -- "LogQL<br/>loki.mule-obs.local:3100" --> LK
+    GR -- "ERROR alert rule" --> SNS["SNS topic"] --> MAIL["Email subscription"]
+```
+
+Everything is defined in [`src/GrafanaStack.ts`](src/GrafanaStack.ts); the Alloy
+pipeline lives in [`src/grafana/loki/config.alloy`](src/grafana/loki/config.alloy)
+and the dashboard, datasource and alert rule under
+[`src/grafana/`](src/grafana/).
+
 ## VPC Proxy (Tinyproxy)
 
 An on-demand tinyproxy ECS task definition is deployed in `development` and `acceptance` environments to forward local laptop traffic to VPC / internal resources via AWS SSM port-forwarding.
