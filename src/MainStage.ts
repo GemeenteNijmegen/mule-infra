@@ -38,12 +38,17 @@ export class MainStage extends Stage {
       });
     }
 
-    new GrafanaStack(this, 'grafana-stack', {
-      env: props.configuration.deploymentEnvironment,
-      configuration: props.configuration,
-      vpc: muleStack.vpc,
-      cluster: muleStack.cluster,
-    });
+    /**
+     * Grafana observability stack for dev only
+     */
+    if (props.configuration.grafanaEnabled) {
+      new GrafanaStack(this, 'grafana-stack', {
+        env: props.configuration.deploymentEnvironment,
+        configuration: props.configuration,
+        vpc: muleStack.vpc,
+        cluster: muleStack.cluster,
+      });
+    }
 
   }
 
