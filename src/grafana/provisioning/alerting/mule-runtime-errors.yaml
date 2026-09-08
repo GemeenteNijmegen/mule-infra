@@ -1,0 +1,119 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: mule-runtime-errors
+    folder: Mule
+    # Evaluate every 5m against Loki. refId A counts ERROR-level lines per Mule
+    # application over a 10m window (from: 600) - two 5m evaluation cycles of
+    # overlap to absorb log-ingestion lag.
+    interval: 5m
+    rules:
+      - uid: mule-runtime-errors
+        title: Mule runtime errors
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              datasource:
+                type: loki
+                uid: loki
+              # applicationName!="" drops runtime chatter, which carries no app.
+              expr: |
+                sum by (applicationName) (
+                  count_over_time({job="mule"} | json | applicationName!="" | priority="ERROR" [$__range])
+                )
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+              queryType: instant
+          - refId: B
+            queryType: expression
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: []
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: expression
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        # No errors is an empty Loki result, not a zero. NoData here mailed a
+        # synthetic DatasourceNoData alert on every quiet evaluation.
+        noDataState: OK
+        # An unqueryable Loki still notifies; the mail renders it separately.
+        execErrState: Error
+        # The 10m overlapping window absorbs ingestion lag; waiting costs 5m.
+        for: 0s
+        annotations:
+          __dashboardUid__: mule-runtime-logs
+          # Errors over time; annotations render on a time series, not a table.
+          __panelId__: "2"
+          summary: "Mule runtime errors for {{ $labels.applicationName }}"
+          description: "{{ $labels.applicationName }} logged {{ $values.B.Value }} errors in the evaluation window."
+          # Appended to Grafana's external URL by the contact point: this app's
+          # dashboard, where the errors table links each correlationId to its
+          # trace. Relative window - templates cannot do time arithmetic.
+          dashboard_path: "/d/mule-runtime-logs/mule-runtime-logs?var-applicationName={{ $labels.applicationName }}&var-correlationId=&var-search=&from=now-3h&to=now"
+          logs_query: '{job="mule"} | json | applicationName="{{ $labels.applicationName }}" | priority="ERROR"'
+        labels:
+          severity: critical
+        notification_settings:
+          receiver: mule-runtime-errors-sns
+          # One mail per application, each with its own subject and link.
+          # Grafana rejects a group_by without grafana_folder and alertname.
+          group_by:
+            - grafana_folder
+            - alertname
+            - applicationName
+        isPaused: false

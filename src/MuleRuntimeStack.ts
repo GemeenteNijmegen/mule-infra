@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Duration, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam } from 'aws-cdk-lib';
+import { Aspects, Duration, Fn, RemovalPolicy, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_logs as logs, aws_amazonmq as amazonmq } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
@@ -20,6 +20,8 @@ interface MuleRuntimeStackProps extends StackProps, Configurable { }
 export class MuleRuntimeStack extends Stack {
   public readonly vpc: ec2.IVpc;
   public readonly cluster: ecs.ICluster;
+  public readonly messageQueueSecurityGroup: ec2.SecurityGroup;
+  public readonly activeMqConsoleUrls: string[];
 
   constructor(scope: Construct, id: string, private readonly props: MuleRuntimeStackProps) {
     super(scope, id, props);
@@ -44,6 +46,64 @@ export class MuleRuntimeStack extends Stack {
 
     this.cluster = new ecs.Cluster(this, 'MuleRuntimeCluster', {
       vpc: this.vpc,
+    });
+
+    const brokerUser = new Secret(this, 'ActiveMQUserSecret', {
+      generateSecretString: {
+        passwordLength: 20,
+        // Minimum 12 characters, at least 4 unique characters.
+        // Can't contain commas (,), colons (:), equals signs (=), spaces or non-printable ASCII characters.
+        excludeCharacters: ',:= "\'\/@',
+      },
+    });
+
+    const messageQueueSecurityGroup = new ec2.SecurityGroup(this, 'MessageQueueSecurityGroup', {
+      vpc: this.vpc,
+      // allowAllOutbound: false,
+      description: 'Security group for ActiveMQ message queue',
+    });
+    this.messageQueueSecurityGroup = messageQueueSecurityGroup;
+
+    const privateSubnetIds = this.vpc.privateSubnets.map(subnet => subnet.subnetId);
+    const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
+      // TODO: rename this
+      brokerName: 'MuleMessageQueueDev',
+      deploymentMode: 'ACTIVE_STANDBY_MULTI_AZ',
+      engineType: 'ACTIVEMQ',
+      // TODO: not ready for production!
+      hostInstanceType: 'mq.t3.micro',
+      // Kept private: the web console and OpenWire endpoints are reached from
+      // inside the VPC only. Developers tunnel to the console via
+      // scripts/mq-console.sh (SSM + the on-demand tinyproxy task).
+      publiclyAccessible: false,
+      securityGroups: [messageQueueSecurityGroup.securityGroupId],
+      subnetIds: privateSubnetIds.slice(0, 2),
+      users: [{
+        username: 'admin',
+        password: brokerUser.secretValue.toString(),
+        consoleAccess: true,
+      }],
+    });
+
+    // Amazon MQ serves the ActiveMQ web console on port 8162 of each broker
+    // instance host. ACTIVE_STANDBY_MULTI_AZ has two instances (-1 and -2); only
+    // the currently active one serves the console, so publish both URLs and let
+    // scripts/mq-console.sh probe which is live. Derived from the broker id
+    // (cfnBroker.ref) so nothing is hard-coded.
+    this.activeMqConsoleUrls = [1, 2].map(
+      instance => `https://${cfnBroker.ref}-${instance}.mq.${this.region}.amazonaws.com:${Statics.activeMqConsolePort}`,
+    );
+
+    new StringParameter(this, 'ActiveMqConsoleUrls', {
+      parameterName: Statics.ssmActiveMqConsoleUrls,
+      stringValue: this.activeMqConsoleUrls.join(','),
+      description: 'ActiveMQ web console URLs for both AZ instances; reach them via scripts/mq-console.sh',
+    });
+
+    new StringParameter(this, 'ActiveMqAdminSecretArn', {
+      parameterName: Statics.ssmActiveMqAdminSecretArn,
+      stringValue: brokerUser.secretArn,
+      description: 'Secrets Manager ARN of the ActiveMQ "admin" user credentials',
     });
 
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
@@ -99,6 +159,11 @@ export class MuleRuntimeStack extends Stack {
     // Preserving the mule-agent.yml is required to maintain the server's registration and connectivity with Anypoint Runtime Manager.
     const loopCount = Math.max(1, props.configuration.taskCount);
     for (let i = 1; i <= loopCount; i++) {
+      const logGroup = new logs.LogGroup(this, `MuleRuntimeLogGroup${i}`, {
+        logGroupName: `/mule/${props.configuration.branchName}/runtime-${i}`,
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.RETAIN,
+      });
       const accessPoint = new efs.AccessPoint(this, `MuleEfsAccessPoint${i}`, {
         fileSystem,
         path: `/mule-data-${i}`,
@@ -146,7 +211,10 @@ export class MuleRuntimeStack extends Stack {
 
       const container = taskDefinition.addContainer('MuleRuntimeContainer', {
         image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, Statics.muleDockerImageHash),
-        logging: ecs.LogDrivers.awsLogs({ streamPrefix: `mule-runtime-${i}` }),
+        logging: ecs.LogDrivers.awsLogs({
+          streamPrefix: `mule-runtime-${i}`,
+          logGroup,
+        }),
         memoryLimitMiB: props.configuration.memoryLimitMiB,
         environment: {
           SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
@@ -155,6 +223,14 @@ export class MuleRuntimeStack extends Stack {
           MULE_KEYSTORE: keyStore.secretArn,
           // Set heap size as a percentage of container memory, and configure metaspace
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
+          // Ready-to-use ActiveMQ broker URL for the Mule JMS connector (used verbatim as
+          // <jms:factory-configuration brokerUrl="${ACTIVEMQ_BROKER_URL}" />).
+          // Amazon MQ only exposes TLS OpenWire endpoints (ssl://...:61617) - there is no plaintext
+          // tcp:// listener. The failover: transport lists both instances of the ACTIVE_STANDBY_MULTI_AZ
+          // deployment so the client reconnects automatically across failover and maintenance windows.
+          ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?randomize=false&timeout=3000`,
+          ACTIVEMQ_USERNAME: 'admin',
+          MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -163,6 +239,7 @@ export class MuleRuntimeStack extends Stack {
           ANYPOINT_ENV_ID: ecs.Secret.fromSsmParameter(envIdParam),
           MULE_KEYSTORE_PASSWORD: ecs.Secret.fromSecretsManager(keystorePassword),
           MULE_TRUSTSTORE_PASSWORD: ecs.Secret.fromSecretsManager(truststorePassword),
+          ACTIVEMQ_PASSWORD: ecs.Secret.fromSecretsManager(brokerUser),
         },
       });
 
@@ -172,6 +249,7 @@ export class MuleRuntimeStack extends Stack {
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
+      brokerUser.grantRead(taskDefinition.obtainExecutionRole());
 
       container.addPortMappings(
         {
@@ -200,6 +278,9 @@ export class MuleRuntimeStack extends Stack {
         healthCheckGracePeriod: Duration.seconds(300),
         enableExecuteCommand: true,
       });
+
+      // Allow ECS service group to connect to the ActiveMQ OpenWire SSL endpoint.
+      ecsService.connections.allowTo(messageQueueSecurityGroup, ec2.Port.tcp(61617));
 
       if (previousService) {
         ecsService.node.addDependency(previousService);
