@@ -266,7 +266,7 @@ export class GrafanaStack extends Stack {
     }).addPortMappings({ containerPort: 3100, protocol: ecs.Protocol.TCP });
 
     // Alloy rides in the Loki task as a non-essential sidecar: it pulls the Mule
-    // runtime logs that ECS writes to CloudWatch and pushes them to Loki over
+    // application logs from CloudWatch and pushes them to Loki over
     // localhost. Keeping the reader in-cluster means Grafana never calls an AWS
     // API directly, so a misconfiguration or a growing dataset can't run up an
     // unbounded CloudWatch bill - spend is capped by this container plus Loki's
@@ -289,16 +289,13 @@ export class GrafanaStack extends Stack {
       command: [alloyCommand],
       environment: {
         AWS_REGION: this.region,
-        // Matches /mule/<branch>/runtime-1, runtime-2, ... (see MuleRuntimeStack).
-        MULE_LOG_GROUP_PREFIX: `/mule/${props.configuration.branchName}/`,
+        // The shared Mule application log group (see MuleRuntimeStack). The
+        // per-task runtime groups are deliberately not read.
+        MULE_APP_LOG_GROUP: Statics.muleAppLogGroupName(props.configuration.branchName),
       },
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'alloy', logGroup }),
     });
 
-    // Read-only discovery and fetch of the Mule log groups. AWS does not charge
-    // for these read APIs - only ingestion, storage and Logs Insights scans
-    // cost. autodiscover polling uses FilterLogEvents; the rest cover Alloy's
-    // other fetch modes so a config tweak doesn't need an IAM change.
     taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
       actions: [
         'logs:DescribeLogGroups',
@@ -307,8 +304,8 @@ export class GrafanaStack extends Stack {
         'logs:GetLogEvents',
       ],
       resources: [
-        `arn:aws:logs:${this.region}:${this.account}:log-group:/mule/${props.configuration.branchName}/*`,
-        `arn:aws:logs:${this.region}:${this.account}:log-group:/mule/${props.configuration.branchName}/*:*`,
+        `arn:aws:logs:${this.region}:${this.account}:log-group:${Statics.muleAppLogGroupName(props.configuration.branchName)}`,
+        `arn:aws:logs:${this.region}:${this.account}:log-group:${Statics.muleAppLogGroupName(props.configuration.branchName)}:*`,
       ],
     }));
 

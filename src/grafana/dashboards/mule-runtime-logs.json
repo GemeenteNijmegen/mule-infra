@@ -62,7 +62,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum by (applicationName) (count_over_time({job=\"mule\"} | json | applicationName!=\"\" | applicationName=~\"$applicationName\" [$__auto]))",
+          "expr": "sum by (applicationName) (count_over_time({job=\"mule\"} | json | applicationName=~\"$applicationName\" [$__auto]))",
           "legendFormat": "{{applicationName}}",
           "refId": "A"
         }
@@ -96,7 +96,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum by (applicationName) (count_over_time({job=\"mule\"} | json | applicationName!=\"\" | priority=\"ERROR\" | applicationName=~\"$applicationName\" [$__auto]))",
+          "expr": "sum by (applicationName) (count_over_time({job=\"mule\"} | json | priority=\"ERROR\" | applicationName=~\"$applicationName\" [$__auto]))",
           "legendFormat": "{{applicationName}}",
           "refId": "A"
         }
@@ -133,7 +133,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{job=\"mule\"} | json | applicationName!=\"\" | priority=\"ERROR\" | applicationName=~\"$applicationName\" |~ \"(?i)$search\"",
+          "expr": "{job=\"mule\"} | json | priority=\"ERROR\" | applicationName=~\"$applicationName\" |~ \"(?i)$search\"",
           "refId": "A"
         }
       ],
@@ -176,7 +176,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{job=\"mule\"} | json | applicationName!=\"\" | applicationName=~\"$applicationName\" |~ \"(?i)$search\" | label_format level=priority",
+          "expr": "{job=\"mule\"} | json | applicationName=~\"$applicationName\" |~ \"(?i)$search\" | label_format level=priority",
           "refId": "A"
         }
       ],
@@ -216,7 +216,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "topk(25, sum by (correlationId, applicationName) (count_over_time({job=\"mule\"} | json | applicationName!=\"\" | correlationId!=\"\" | applicationName=~\"$applicationName\" |~ \"(?i)$search\" [$__range])))",
+          "expr": "topk(25, sum by (correlationId, applicationName) (count_over_time({job=\"mule\"} | json | correlationId!=\"\" | applicationName=~\"$applicationName\" |~ \"(?i)$search\" [$__range])))",
           "instant": true,
           "refId": "A"
         }
@@ -252,47 +252,12 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{job=\"mule\"} | json | applicationName!=\"\" | correlationId!=\"\" | correlationId=\"$correlationId\" | label_format level=priority",
+          "expr": "{job=\"mule\"} | json | correlationId!=\"\" | correlationId=\"$correlationId\" | label_format level=priority",
           "refId": "A"
         }
       ],
       "title": "Request trace by correlation ID",
       "type": "logs"
-    },
-    {
-      "collapsed": true,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 },
-      "id": 7,
-      "title": "System / runtime logs",
-      "type": "row",
-      "panels": [
-        {
-          "datasource": { "type": "loki", "uid": "loki" },
-          "description": "Mule runtime / container lines that carry no applicationName - startup, deployment, connector chatter. Not application logging; kept here so it stays out of the panels above.",
-          "fieldConfig": { "defaults": {}, "overrides": [] },
-          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 51 },
-          "id": 8,
-          "options": {
-            "dedupStrategy": "none",
-            "enableLogDetails": true,
-            "prettifyJSON": true,
-            "showCommonLabels": false,
-            "showLabels": false,
-            "showTime": true,
-            "sortOrder": "Descending",
-            "wrapLogMessage": true
-          },
-          "targets": [
-            {
-              "datasource": { "type": "loki", "uid": "loki" },
-              "expr": "{job=\"mule\"} | json | applicationName=\"\" |~ \"(?i)$search\"",
-              "refId": "A"
-            }
-          ],
-          "title": "System / runtime logs",
-          "type": "logs"
-        }
-      ]
     }
   ],
   "refresh": "30s",
@@ -302,5 +267,5 @@
   "timezone": "browser",
   "title": "Mule Runtime Logs",
   "uid": "mule-runtime-logs",
-  "version": 3
+  "version": 4
 }

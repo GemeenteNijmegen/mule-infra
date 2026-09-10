@@ -79,7 +79,7 @@ export class MuleRuntimeStack extends Stack {
       hostInstanceType: props.configuration.mqHostInstanceType,
       // Single instance means patching is a hard interruption, so keep it
       // outside office hours.
-      // TODO: check current activity on this moment to make sure we're 
+      // TODO: check current activity on this moment to make sure we're
       // not interrupting a running process.
       maintenanceWindowStartTime: {
         dayOfWeek: 'SUNDAY',
@@ -157,6 +157,19 @@ export class MuleRuntimeStack extends Stack {
         recordName,
         target: RecordTarget.fromIpAddresses(ip),
       });
+    });
+
+    // One shared log group and stream for the Mule application logs, written
+    // straight from the apps' log4j2 CloudWatch appender. Deliberately outside
+    // the per-task loop below: every task writes to the same stream, so a
+    // correlation ID is readable in one place instead of being spread over the
+    // per-task runtime groups. Retention is longer than the runtime groups' one
+    // month - app logs are the ones that get looked up long after the fact,
+    // system logs are only useful while an incident is live.
+    const appLogGroup = new logs.LogGroup(this, 'MuleAppLogGroup', {
+      logGroupName: Statics.muleAppLogGroupName(props.configuration.branchName),
+      retention: logs.RetentionDays.SIX_MONTHS,
+      removalPolicy: RemovalPolicy.RETAIN,
     });
 
     const loadBalancerTargets = [];
@@ -245,6 +258,8 @@ export class MuleRuntimeStack extends Stack {
           ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?timeout=3000`,
           ACTIVEMQ_USERNAME: 'admin',
           MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
+          MULE_APP_LOG_GROUP: appLogGroup.logGroupName,
+          MULE_APP_LOG_STREAM: Statics.muleAppLogStreamName,
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -256,6 +271,9 @@ export class MuleRuntimeStack extends Stack {
           ACTIVEMQ_PASSWORD: ecs.Secret.fromSecretsManager(brokerUser),
         },
       });
+
+      appLogGroup.grant(taskDefinition.taskRole,
+        'logs:CreateLogStream', 'logs:PutLogEvents', 'logs:DescribeLogStreams');
 
       licenseSecret.grantRead(taskDefinition.taskRole);
       trustStore.grantRead(taskDefinition.taskRole);

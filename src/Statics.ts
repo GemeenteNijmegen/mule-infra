@@ -27,6 +27,13 @@ export class Statics {
     'corsa',
   ];
 
+  /**
+   * Mule application logs go to one shared CloudWatch log group and stream,
+   * separate from the per-task runtime groups that hold the system logs. One
+   * stream for every app and every task keeps a correlation ID readable in a
+   * single place.
+   */
+  static readonly muleAppLogStreamName = 'apps';
   // MARK: environments
   static readonly buildEnvironment = {
     account: '836443378780',
@@ -72,5 +79,14 @@ export class Statics {
   static readonly activeMqConsolePort = 8162;
   static readonly ssmActiveMqConsoleUrls = `/${Statics.projectName}/activemq/console-urls`;
   static readonly ssmActiveMqAdminSecretArn = `/${Statics.projectName}/activemq/admin-secret-arn`;
+
+  /**
+   * Shared CloudWatch log group holding the Mule application logs for a branch.
+   * Written by the apps, read by the Alloy sidecar - both derive it from here so
+   * the two cannot drift apart.
+   */
+  static muleAppLogGroupName(branchName: string) {
+    return `/mule/${branchName}/apps`;
+  }
 
 }

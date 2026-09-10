@@ -1,5 +1,5 @@
 import { App } from 'aws-cdk-lib';
-import { Template } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { Configuration } from '../src/Configuration';
 import { MuleRuntimeStack } from '../src/MuleRuntimeStack';
 
@@ -45,6 +45,61 @@ describe('MuleRuntimeStack taskCount logic', () => {
     const template = Template.fromStack(stack);
 
     template.resourceCountIs('AWS::ECS::Service', 3);
+  });
+
+  test('shares one application log group across every task', () => {
+    const app = new App();
+    const stack = new MuleRuntimeStack(app, 'MuleRuntimeStackAppLogs', {
+      ...defaultProps,
+      configuration: { ...defaultProps.configuration, taskCount: 3 },
+    });
+
+    const template = Template.fromStack(stack);
+
+    // Three tasks, three runtime log groups, but only one application group -
+    // that is what keeps a correlation ID readable in a single place.
+    const logGroups = Object.values(template.findResources('AWS::Logs::LogGroup'))
+      .map(group => group.Properties.LogGroupName);
+    expect(logGroups.filter(name => name === '/mule/main/apps')).toHaveLength(1);
+
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: '/mule/main/apps',
+      RetentionInDays: 180,
+    });
+
+    // Every task definition points its apps at that one group and stream. The
+    // group name is a Ref, so comparing the refs is what proves the three tasks
+    // share a group rather than each getting their own.
+    const [appLogGroupId] = Object.entries(template.findResources('AWS::Logs::LogGroup'))
+      .find(([, group]) => group.Properties.LogGroupName === '/mule/main/apps')!;
+    const taskDefinitions = Object.values(template.findResources('AWS::ECS::TaskDefinition'));
+    expect(taskDefinitions).toHaveLength(3);
+    taskDefinitions.forEach(taskDefinition => {
+      const environment = taskDefinition.Properties.ContainerDefinitions[0].Environment;
+      expect(environment).toEqual(expect.arrayContaining([
+        { Name: 'MULE_APP_LOG_GROUP', Value: { Ref: appLogGroupId } },
+        { Name: 'MULE_APP_LOG_STREAM', Value: 'apps' },
+      ]));
+    });
+  });
+
+  test('lets the task role write to the application log group', () => {
+    const app = new App();
+    const stack = new MuleRuntimeStack(app, 'MuleRuntimeStackAppLogsIam', { ...defaultProps });
+
+    const template = Template.fromStack(stack);
+
+    // The appender runs in the application JVM, so this must be on the task
+    // role - the execution role only covers the awslogs driver.
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: ['logs:CreateLogStream', 'logs:PutLogEvents', 'logs:DescribeLogStreams'],
+          }),
+        ]),
+      },
+    });
   });
 
   test('runs the broker as a single instance in exactly one subnet', () => {

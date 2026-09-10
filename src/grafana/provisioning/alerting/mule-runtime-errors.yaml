@@ -22,10 +22,10 @@ groups:
               datasource:
                 type: loki
                 uid: loki
-              # applicationName!="" drops runtime chatter, which carries no app.
+              # Loki holds application logs only, so no runtime chatter to drop.
               expr: |
                 sum by (applicationName) (
-                  count_over_time({job="mule"} | json | applicationName!="" | priority="ERROR" [$__range])
+                  count_over_time({job="mule"} | json | priority="ERROR" [$__range])
                 )
               intervalMs: 1000
               maxDataPoints: 43200

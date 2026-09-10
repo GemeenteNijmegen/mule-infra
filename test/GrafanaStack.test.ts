@@ -78,7 +78,8 @@ describe('GrafanaStack', () => {
     // alert, so this must never go back.
     expect(rule).toContain('noDataState: OK');
     expect(rule).not.toContain('noDataState: NoData');
-    expect(rule).toContain('applicationName!=""');
+    // Loki holds application logs only; the old runtime-chatter guard is gone.
+    expect(rule).not.toContain('applicationName!=""');
   });
 
   test('the alert mail links to the dashboard for the failing application', () => {
@@ -120,7 +121,7 @@ describe('GrafanaStack', () => {
     expect(commandText).not.toContain('/var/lib/grafana/provisioning/datasources/cloudwatch.yaml');
   });
 
-  test('runs an Alloy sidecar that reads the Mule CloudWatch logs into Loki', () => {
+  test('runs an Alloy sidecar that reads only the Mule application log group', () => {
     const app = new App();
     const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
     const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
@@ -139,22 +140,23 @@ describe('GrafanaStack', () => {
           Essential: false,
           Command: Match.arrayWith([Match.stringLikeRegexp('alloy run /tmp/config.alloy')]),
           Environment: Match.arrayWith([
-            Match.objectLike({ Name: 'MULE_LOG_GROUP_PREFIX', Value: '/mule/development/' }),
+            Match.objectLike({ Name: 'MULE_APP_LOG_GROUP', Value: '/mule/development/apps' }),
           ]),
         }),
       ]),
     });
 
-    // The task role may only read the Mule log groups - no direct AWS querying
-    // from Grafana, and nothing that AWS bills per call.
+    // The task role may only read the application log group - the per-task
+    // runtime groups stay out of Loki - and nothing that AWS bills per call.
     template.hasResourceProperties('AWS::IAM::Policy', {
       PolicyDocument: {
         Statement: Match.arrayWith([
           Match.objectLike({
             Action: ['logs:DescribeLogGroups', 'logs:DescribeLogStreams', 'logs:FilterLogEvents', 'logs:GetLogEvents'],
-            Resource: Match.arrayWith([
-              'arn:aws:logs:eu-central-1:123456789012:log-group:/mule/development/*',
-            ]),
+            Resource: [
+              'arn:aws:logs:eu-central-1:123456789012:log-group:/mule/development/apps',
+              'arn:aws:logs:eu-central-1:123456789012:log-group:/mule/development/apps:*',
+            ],
           }),
         ]),
       },
