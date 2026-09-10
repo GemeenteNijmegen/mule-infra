@@ -72,7 +72,20 @@ export class MuleRuntimeStack extends Stack {
       // a standby. Changing this forces a broker replacement.
       deploymentMode: 'SINGLE_INSTANCE',
       engineType: 'ACTIVEMQ',
+      // Pinned so a stack update never silently moves the broker to whatever
+      // version AWS defaults to; minor patches still land automatically.
+      engineVersion: '5.19.12',
+      autoMinorVersionUpgrade: true,
       hostInstanceType: props.configuration.mqHostInstanceType,
+      // Single instance means patching is a hard interruption, so keep it
+      // outside office hours.
+      // TODO: check current activity on this moment to make sure we're 
+      // not interrupting a running process.
+      maintenanceWindowStartTime: {
+        dayOfWeek: 'SUNDAY',
+        timeOfDay: '03:00',
+        timeZone: 'Europe/Amsterdam',
+      },
       // Kept private: the web console and OpenWire endpoints are reached from
       // inside the VPC only. Developers tunnel to the console via
       // scripts/mq-console.sh (SSM + the on-demand tinyproxy task).
