@@ -17,6 +17,7 @@ describe('MuleRuntimeStack taskCount logic', () => {
       memoryLimitMiB: 2048,
       minHealthyPercent: 50,
       maxHealthyPercent: 200,
+      mqHostInstanceType: 'mq.m5.large',
     } as unknown as Configuration,
   };
 
@@ -44,5 +45,20 @@ describe('MuleRuntimeStack taskCount logic', () => {
     const template = Template.fromStack(stack);
 
     template.resourceCountIs('AWS::ECS::Service', 3);
+  });
+
+  test('runs the broker as a single instance in exactly one subnet', () => {
+    const app = new App();
+    const stack = new MuleRuntimeStack(app, 'MuleRuntimeStackBroker', {
+      ...defaultProps,
+      configuration: { ...defaultProps.configuration, taskCount: 1 },
+    });
+
+    const template = Template.fromStack(stack);
+
+    const broker = Object.values(template.findResources('AWS::AmazonMQ::Broker'))[0];
+    expect(broker.Properties.DeploymentMode).toBe('SINGLE_INSTANCE');
+    expect(broker.Properties.HostInstanceType).toBe('mq.m5.large');
+    expect(broker.Properties.SubnetIds).toHaveLength(1);
   });
 });

@@ -229,8 +229,8 @@ export class GrafanaStack extends Stack {
       'set -eu',
       'mkdir -p /etc/loki',
       `echo '${Buffer.from(config).toString('base64')}' | base64 -d`
-        + ' | sed -e "s|__LOKI_BUCKET__|$LOKI_BUCKET|g" -e "s|__AWS_REGION__|$AWS_REGION|g"'
-        + ' > /etc/loki/loki-config.yaml',
+      + ' | sed -e "s|__LOKI_BUCKET__|$LOKI_BUCKET|g" -e "s|__AWS_REGION__|$AWS_REGION|g"'
+      + ' > /etc/loki/loki-config.yaml',
       'exec /usr/bin/loki -config.file=/etc/loki/loki-config.yaml',
     ].join('\n');
 
@@ -279,7 +279,7 @@ export class GrafanaStack extends Stack {
       // only loads with --stability.level=experimental. The image tag is pinned
       // in Statics, so a breaking change can't land until we bump it on purpose.
       'exec alloy run /tmp/config.alloy --stability.level=experimental'
-        + ' --disable-reporting --storage.path=/tmp/alloy --server.http.listen-addr=127.0.0.1:12345',
+      + ' --disable-reporting --storage.path=/tmp/alloy --server.http.listen-addr=127.0.0.1:12345',
     ].join('\n');
     taskDefinition.addContainer('LokiAlloyContainer', {
       image: ecs.ContainerImage.fromRegistry(Statics.alloyDockerImage),

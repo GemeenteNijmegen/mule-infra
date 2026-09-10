@@ -17,6 +17,7 @@ describe('GrafanaStack', () => {
       minHealthyPercent: 0,
       maxHealthyPercent: 100,
       proxyEnabled: true,
+      mqHostInstanceType: 'mq.t3.micro',
     } as unknown as Configuration,
   };
 

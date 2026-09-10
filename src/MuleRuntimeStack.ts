@@ -67,16 +67,18 @@ export class MuleRuntimeStack extends Stack {
     const privateSubnetIds = this.vpc.privateSubnets.map(subnet => subnet.subnetId);
     const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
       brokerName: 'MuleMessageQueue',
-      deploymentMode: 'ACTIVE_STANDBY_MULTI_AZ',
+      // Single instance: the queue is only used by the Mule apps during office
+      // hours and their callers retry, so a restart is cheaper than paying for
+      // a standby. Changing this forces a broker replacement.
+      deploymentMode: 'SINGLE_INSTANCE',
       engineType: 'ACTIVEMQ',
-      // TODO: not ready for production!
-      hostInstanceType: 'mq.t3.micro',
+      hostInstanceType: props.configuration.mqHostInstanceType,
       // Kept private: the web console and OpenWire endpoints are reached from
       // inside the VPC only. Developers tunnel to the console via
       // scripts/mq-console.sh (SSM + the on-demand tinyproxy task).
       publiclyAccessible: false,
       securityGroups: [messageQueueSecurityGroup.securityGroupId],
-      subnetIds: privateSubnetIds.slice(0, 2),
+      subnetIds: privateSubnetIds.slice(0, 1),
       users: [{
         username: 'admin',
         password: brokerUser.secretValue.toString(),
@@ -84,19 +86,17 @@ export class MuleRuntimeStack extends Stack {
       }],
     });
 
-    // Amazon MQ serves the ActiveMQ web console on port 8162 of each broker
-    // instance host. ACTIVE_STANDBY_MULTI_AZ has two instances (-1 and -2); only
-    // the currently active one serves the console, so publish both URLs and let
-    // scripts/mq-console.sh probe which is live. Derived from the broker id
-    // (cfnBroker.ref) so nothing is hard-coded.
-    this.activeMqConsoleUrls = [1, 2].map(
-      instance => `https://${cfnBroker.ref}-${instance}.mq.${this.region}.amazonaws.com:${Statics.activeMqConsolePort}`,
-    );
+    // Amazon MQ serves the ActiveMQ web console on port 8162 of the broker
+    // instance host, numbered from 1. Derived from the broker id (cfnBroker.ref)
+    // so nothing is hard-coded. Reached via scripts/mq-console.sh.
+    this.activeMqConsoleUrls = [
+      `https://${cfnBroker.ref}-1.mq.${this.region}.amazonaws.com:${Statics.activeMqConsolePort}`,
+    ];
 
     new StringParameter(this, 'ActiveMqConsoleUrls', {
       parameterName: Statics.ssmActiveMqConsoleUrls,
       stringValue: this.activeMqConsoleUrls.join(','),
-      description: 'ActiveMQ web console URLs for both AZ instances; reach them via scripts/mq-console.sh',
+      description: 'ActiveMQ web console URLs per broker instance; reach them via scripts/mq-console.sh',
     });
 
     new StringParameter(this, 'ActiveMqAdminSecretArn', {
@@ -226,9 +226,10 @@ export class MuleRuntimeStack extends Stack {
           // Ready-to-use ActiveMQ broker URL for the Mule JMS connector (used verbatim as
           // <jms:factory-configuration brokerUrl="${ACTIVEMQ_BROKER_URL}" />).
           // Amazon MQ only exposes TLS OpenWire endpoints (ssl://...:61617) - there is no plaintext
-          // tcp:// listener. The failover: transport lists both instances of the ACTIVE_STANDBY_MULTI_AZ
-          // deployment so the client reconnects automatically across failover and maintenance windows.
-          ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?randomize=false&timeout=3000`,
+          // tcp:// listener. The failover: transport reconnects automatically after a broker
+          // restart; timeout keeps sends fail-fast in the meantime instead of blocking a thread
+          // for the whole restart (the failover default is -1, wait forever).
+          ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?timeout=3000`,
           ACTIVEMQ_USERNAME: 'admin',
           MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
         },
