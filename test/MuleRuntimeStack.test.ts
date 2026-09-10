@@ -115,5 +115,8 @@ describe('MuleRuntimeStack taskCount logic', () => {
     expect(broker.Properties.DeploymentMode).toBe('SINGLE_INSTANCE');
     expect(broker.Properties.HostInstanceType).toBe('mq.m5.large');
     expect(broker.Properties.SubnetIds).toHaveLength(1);
+    // The name carries a hash of the replacement-forcing properties, so a
+    // replacing update never collides with the broker it replaces.
+    expect(broker.Properties.BrokerName).toMatch(/^MuleMessageQueue-[0-9a-f]{8}$/);
   });
 });

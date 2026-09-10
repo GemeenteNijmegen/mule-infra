@@ -65,13 +65,44 @@ export class MuleRuntimeStack extends Stack {
     this.messageQueueSecurityGroup = messageQueueSecurityGroup;
 
     const privateSubnetIds = this.vpc.privateSubnets.map(subnet => subnet.subnetId);
-    const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
-      brokerName: 'MuleMessageQueue',
-      // Single instance: the queue is only used by the Mule apps during office
+
+    // The properties Amazon MQ cannot change in place: setting any of them
+    // differently replaces the broker. Kept in one object so the name hash
+    // below can never drift from what is actually deployed.
+    const brokerReplacementProperties = {
+      // Single instance: the queue is mostly used by the Mule apps during office
       // hours and their callers retry, so a restart is cheaper than paying for
-      // a standby. Changing this forces a broker replacement.
+      // a standby.
       deploymentMode: 'SINGLE_INSTANCE',
       engineType: 'ACTIVEMQ',
+      // Kept private: the web console and OpenWire endpoints are reached from
+      // inside the VPC only. Developers tunnel to the console via
+      // scripts/mq-console.sh (SSM + the on-demand tinyproxy task).
+      publiclyAccessible: false,
+      // Which private subnet the broker lands in. The subnet *ids* belong here
+      // too - they force a replacement as well - but they are unresolved SSM
+      // tokens at synth time, so the index is what can be hashed. Repointing
+      // the landing zone's private-subnet-1 parameter is therefore the one
+      // replacement this hash does not notice.
+      subnetIndex: 0,
+    };
+
+    // Amazon MQ requires an explicit broker name, unique per account and
+    // region, and changing it replaces the broker. A fixed name therefore
+    // deadlocks every replacing update: CloudFormation creates the new broker
+    // before deleting the old one, and the name is still taken. Suffixing the
+    // name with a hash of the properties above means such an update lands
+    // under a name of its own, while in-place updates (engine version,
+    // instance type, users, maintenance window) leave the name alone.
+    const brokerNameSuffix = crypto.createHash('md5')
+      .update(JSON.stringify(brokerReplacementProperties))
+      .digest('hex')
+      .substring(0, 8);
+
+    const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
+      brokerName: `MuleMessageQueue-${brokerNameSuffix}`,
+      deploymentMode: brokerReplacementProperties.deploymentMode,
+      engineType: brokerReplacementProperties.engineType,
       // Pinned so a stack update never silently moves the broker to whatever
       // version AWS defaults to; minor patches still land automatically.
       engineVersion: '5.19',
@@ -79,19 +110,14 @@ export class MuleRuntimeStack extends Stack {
       hostInstanceType: props.configuration.mqHostInstanceType,
       // Single instance means patching is a hard interruption, so keep it
       // outside office hours.
-      // TODO: check current activity on this moment to make sure we're
-      // not interrupting a running process.
       maintenanceWindowStartTime: {
-        dayOfWeek: 'SUNDAY',
-        timeOfDay: '03:00',
+        dayOfWeek: 'TUESDAY',
+        timeOfDay: '02:00',
         timeZone: 'Europe/Amsterdam',
       },
-      // Kept private: the web console and OpenWire endpoints are reached from
-      // inside the VPC only. Developers tunnel to the console via
-      // scripts/mq-console.sh (SSM + the on-demand tinyproxy task).
-      publiclyAccessible: false,
+      publiclyAccessible: brokerReplacementProperties.publiclyAccessible,
       securityGroups: [messageQueueSecurityGroup.securityGroupId],
-      subnetIds: privateSubnetIds.slice(0, 1),
+      subnetIds: [privateSubnetIds[brokerReplacementProperties.subnetIndex]],
       users: [{
         username: 'admin',
         password: brokerUser.secretValue.toString(),
