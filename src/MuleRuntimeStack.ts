@@ -74,7 +74,7 @@ export class MuleRuntimeStack extends Stack {
       engineType: 'ACTIVEMQ',
       // Pinned so a stack update never silently moves the broker to whatever
       // version AWS defaults to; minor patches still land automatically.
-      engineVersion: '5.19.12',
+      engineVersion: '5.19',
       autoMinorVersionUpgrade: true,
       hostInstanceType: props.configuration.mqHostInstanceType,
       // Single instance means patching is a hard interruption, so keep it
