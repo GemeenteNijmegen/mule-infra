@@ -1,4 +1,6 @@
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import { Aspects, Duration, Fn, RemovalPolicy, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_logs as logs, aws_amazonmq as amazonmq } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
@@ -99,6 +101,18 @@ export class MuleRuntimeStack extends Stack {
       .digest('hex')
       .substring(0, 8);
 
+    // Broker-wide defaults: per-destination dead-letter queues, memory limits
+    // and prefetch. Attaching this replaces Amazon MQ's default configuration,
+    // so the file is a complete activemq.xml. engineVersion is deliberately
+    // unset: autoMinorVersionUpgrade moves the broker between patch versions
+    // and a pin here would drift out of sync with it.
+    const brokerConfiguration = new amazonmq.CfnConfiguration(this, 'MuleBrokerConfiguration', {
+      name: 'MuleMessageQueueConfig',
+      engineType: brokerReplacementProperties.engineType,
+      description: 'Destination policies and dead-letter strategy for the Mule message queue',
+      data: fs.readFileSync(path.join(__dirname, 'activemq/broker-configuration.xml')).toString('base64'),
+    });
+
     const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
       brokerName: `MuleMessageQueue-${brokerNameSuffix}`,
       deploymentMode: brokerReplacementProperties.deploymentMode,
@@ -107,6 +121,12 @@ export class MuleRuntimeStack extends Stack {
       // version AWS defaults to; minor patches still land automatically.
       engineVersion: '5.19',
       autoMinorVersionUpgrade: true,
+      // Applying a new revision reboots the broker; it is not a replacement, so
+      // this is not part of brokerReplacementProperties above.
+      configuration: {
+        id: brokerConfiguration.attrId,
+        revision: brokerConfiguration.attrRevision,
+      },
       hostInstanceType: props.configuration.mqHostInstanceType,
       // Single instance means patching is a hard interruption, so keep it
       // outside office hours.

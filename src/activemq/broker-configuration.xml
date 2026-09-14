@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Broker configuration for the Mule message queue (AWS::AmazonMQ::Configuration).
+
+  Attaching this replaces Amazon MQ's default configuration wholesale, so it has
+  to be a complete activemq.xml. Amazon MQ accepts only a subset of the ActiveMQ
+  schema; anything outside it is rejected when the revision is created.
+
+  The Mule apps define the destination names, DLQs included, so everything below
+  is a broker-wide default on the ">" wildcard rather than a list of names.
+-->
+<broker xmlns="http://activemq.apache.org/schema/core">
+  <destinationPolicy>
+    <policyMap>
+      <policyEntries>
+        <policyEntry queue="&gt;" memoryLimit="32mb" producerFlowControl="false" queuePrefetch="1">
+          <!--
+            Mule apps dead-letter to <queue>.dlq themselves once their
+            redelivery policy is exhausted. The broker uses the same name as a
+            backstop instead of the shared ActiveMQ.DLQ, so each queue has one
+            DLQ.
+
+            No expiration: app-published DLQ messages carry no TTL either, and
+            DLQ messages that never expire cannot loop into <queue>.dlq.dlq.
+            Clearing DLQs is manual.
+          -->
+          <deadLetterStrategy>
+            <individualDeadLetterStrategy queueSuffix=".dlq" useQueueForQueueMessages="true"/>
+          </deadLetterStrategy>
+        </policyEntry>
+      </policyEntries>
+    </policyMap>
+  </destinationPolicy>
+  <systemUsage>
+    <systemUsage>
+      <!--
+        Relative to the heap rather than a fixed limit, so the same
+        configuration works on mq.t3.micro and mq.m5.large. Storage limits are
+        managed by Amazon MQ and are deliberately not set here.
+      -->
+      <memoryUsage>
+        <memoryUsage percentOfJvmHeap="70"/>
+      </memoryUsage>
+    </systemUsage>
+  </systemUsage>
+</broker>

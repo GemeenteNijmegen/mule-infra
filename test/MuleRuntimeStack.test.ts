@@ -119,4 +119,28 @@ describe('MuleRuntimeStack taskCount logic', () => {
     // replacing update never collides with the broker it replaces.
     expect(broker.Properties.BrokerName).toMatch(/^MuleMessageQueue-[0-9a-f]{8}$/);
   });
+
+  test('attaches a broker configuration with per-destination dead-letter queues', () => {
+    const app = new App();
+    const stack = new MuleRuntimeStack(app, 'MuleRuntimeStackBrokerConfig', {
+      ...defaultProps,
+      configuration: { ...defaultProps.configuration, taskCount: 1 },
+    });
+
+    const template = Template.fromStack(stack);
+
+    const [configLogicalId, configuration] = Object.entries(template.findResources('AWS::AmazonMQ::Configuration'))[0];
+    // engineVersion stays unset so autoMinorVersionUpgrade cannot drift away from it.
+    expect(configuration.Properties.EngineVersion).toBeUndefined();
+
+    const xml = Buffer.from(configuration.Properties.Data, 'base64').toString('utf8');
+    // Matches the <queue>.dlq name the Mule apps already publish to.
+    expect(xml).toContain('<individualDeadLetterStrategy queueSuffix=".dlq" useQueueForQueueMessages="true"/>');
+
+    const broker = Object.values(template.findResources('AWS::AmazonMQ::Broker'))[0];
+    expect(broker.Properties.Configuration).toEqual({
+      Id: { 'Fn::GetAtt': [configLogicalId, 'Id'] },
+      Revision: { 'Fn::GetAtt': [configLogicalId, 'Revision'] },
+    });
+  });
 });
