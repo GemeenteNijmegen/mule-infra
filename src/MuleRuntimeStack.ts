@@ -332,7 +332,7 @@ export class MuleRuntimeStack extends Stack {
           // restart; timeout keeps sends fail-fast in the meantime instead of blocking a thread
           // for the whole restart (the failover default is -1, wait forever).
           ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?timeout=3000`,
-          ACTIVEMQ_USERNAME: 'admin',
+          ACTIVEMQ_USERNAME: 'mule',
           MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
           MULE_APP_LOG_GROUP: appLogGroup.logGroupName,
           MULE_APP_LOG_STREAM: Statics.muleAppLogStreamName,
@@ -344,7 +344,7 @@ export class MuleRuntimeStack extends Stack {
           ANYPOINT_ENV_ID: ecs.Secret.fromSsmParameter(envIdParam),
           MULE_KEYSTORE_PASSWORD: ecs.Secret.fromSecretsManager(keystorePassword),
           MULE_TRUSTSTORE_PASSWORD: ecs.Secret.fromSecretsManager(truststorePassword),
-          ACTIVEMQ_PASSWORD: ecs.Secret.fromSecretsManager(brokerUser),
+          ACTIVEMQ_PASSWORD: ecs.Secret.fromSecretsManager(brokerAppUser),
         },
       });
 
