@@ -113,6 +113,22 @@ export class MuleRuntimeStack extends Stack {
       data: fs.readFileSync(path.join(__dirname, 'activemq/broker-configuration.xml')).toString('base64'),
     });
 
+    // Amazon MQ can only publish broker logs if CloudWatch Logs allows it to.
+    // The console sets this up implicitly; CloudFormation does not.
+    const brokerLogsPolicy = new logs.CfnResourcePolicy(this, 'AmazonMqLogsResourcePolicy', {
+      policyName: 'AmazonMqLogs',
+      policyDocument: JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [{
+          Effect: 'Allow',
+          Principal: { Service: 'mq.amazonaws.com' },
+          Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
+          Resource: `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/amazonmq/*`,
+          Condition: { StringEquals: { 'aws:SourceAccount': this.account } },
+        }],
+      }),
+    });
+
     const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
       brokerName: `MuleMessageQueue-${brokerNameSuffix}`,
       deploymentMode: brokerReplacementProperties.deploymentMode,
@@ -128,6 +144,8 @@ export class MuleRuntimeStack extends Stack {
         revision: brokerConfiguration.attrRevision,
       },
       hostInstanceType: props.configuration.mqHostInstanceType,
+      // Shipped to /aws/amazonmq/broker/<broker-id>/{general,audit}.
+      logs: { general: true, audit: true },
       // Single instance means patching is a hard interruption, so keep it
       // outside office hours.
       maintenanceWindowStartTime: {
@@ -144,6 +162,7 @@ export class MuleRuntimeStack extends Stack {
         consoleAccess: true,
       }],
     });
+    cfnBroker.addResourceDependency(brokerLogsPolicy);
 
     // Amazon MQ serves the ActiveMQ web console on port 8162 of the broker
     // instance host, numbered from 1. Derived from the broker id (cfnBroker.ref)

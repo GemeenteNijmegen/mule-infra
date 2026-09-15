@@ -143,4 +143,22 @@ describe('MuleRuntimeStack taskCount logic', () => {
       Revision: { 'Fn::GetAtt': [configLogicalId, 'Revision'] },
     });
   });
+
+  test('ships general and audit broker logs to CloudWatch', () => {
+    const app = new App();
+    const stack = new MuleRuntimeStack(app, 'MuleRuntimeStackBrokerLogs', {
+      ...defaultProps,
+      configuration: { ...defaultProps.configuration, taskCount: 1 },
+    });
+
+    const template = Template.fromStack(stack);
+
+    const [policyLogicalId, policy] = Object.entries(template.findResources('AWS::Logs::ResourcePolicy'))[0];
+    expect(policy.Properties.PolicyDocument).toContain('mq.amazonaws.com');
+
+    const broker = Object.values(template.findResources('AWS::AmazonMQ::Broker'))[0];
+    expect(broker.Properties.Logs).toEqual({ General: true, Audit: true });
+    // Without the policy in place first, the broker cannot create its log groups.
+    expect(broker.DependsOn).toContain(policyLogicalId);
+  });
 });
