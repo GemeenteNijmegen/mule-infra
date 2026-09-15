@@ -82,11 +82,33 @@ Registration now works with the mule cli and is handled purely in the docker ent
         - The generated `${MULE_HOME}/conf/mule-agent.yml` file, along with the Mule apps, is stored on an attached EFS volume. This ensures the configuration persists across container restarts and deployments, so the server only needs to be registered once.
 - The service is updated.
 
+## Logging
+
+Mule **application** logs and Mule **runtime/system** logs are kept apart at the
+storage level, not by filtering after the fact:
+
+| Logs | Written by | Lands in |
+| --- | --- | --- |
+| Application | the app's own log4j2 CloudWatch appender | `/mule/<branch>/apps`, one shared stream, 6 months |
+| Runtime / system | the ECS `awslogs` driver on stdout | `/mule/<branch>/runtime-N`, one group per task, 1 month |
+
+Every application and every task writes to the **same** stream in the app group,
+so a correlation ID is readable in one place instead of being spread across the
+per-task runtime groups. The group name and stream name reach the containers as
+`MULE_APP_LOG_GROUP` / `MULE_APP_LOG_STREAM`; both derive from
+`Statics.muleAppLogGroupName()` so the runtime stack and the Alloy sidecar cannot
+drift apart. The appender runs inside the application JVM, so it writes under the
+**task** role — unlike the `awslogs` driver, which the ECS agent runs under the
+execution role.
+
 ## Observability (Grafana, Loki, Alloy)
 
-Mule runtime logs are shipped from CloudWatch into Loki by a Grafana Alloy
-sidecar, so Grafana itself never queries an AWS API directly and the cost stays
-bounded by the always-on containers plus Loki's S3 lifecycle expiry.
+Only the application logs are shipped into Loki, by a Grafana Alloy sidecar, so
+Grafana itself never queries an AWS API directly and the cost stays bounded by
+the always-on containers plus Loki's S3 lifecycle expiry. Runtime logs stay in
+CloudWatch: they are an incident-time concern, and leaving them out keeps Loki's
+ingestion and storage down. The Alloy task role can only read the app log group,
+so that split is enforced by IAM and not just by configuration.
 
 ```mermaid
 flowchart LR
@@ -94,9 +116,11 @@ flowchart LR
 
     subgraph muleTask["Mule runtime ECS tasks"]
         MR["Mule runtime container"]
+        MA["Mule applications"]
     end
 
-    MR -- "awslogs driver" --> CW["CloudWatch Logs<br/>/mule/&lt;branch&gt;/runtime-*"]
+    MR -- "awslogs driver" --> CWR["CloudWatch Logs<br/>/mule/&lt;branch&gt;/runtime-*<br/>(stays in AWS)"]
+    MA -- "log4j2 CloudWatch appender" --> CWA["CloudWatch Logs<br/>/mule/&lt;branch&gt;/apps<br/>single shared stream"]
 
     subgraph lokiTask["Loki ECS task"]
         AL["Alloy sidecar<br/>otelcol.receiver.awscloudwatch"]
@@ -104,7 +128,7 @@ flowchart LR
         AL -- "loki.write over localhost<br/>job=mule" --> LK
     end
 
-    CW -- "FilterLogEvents<br/>poll 1m, autodiscover" --> AL
+    CWA -- "FilterLogEvents<br/>poll 1m" --> AL
     LK <--> S3[("S3 chunks + index<br/>21 day expiry")]
 
     subgraph grafanaTask["Grafana ECS task"]

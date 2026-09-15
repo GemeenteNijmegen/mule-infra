@@ -1,5 +1,9 @@
-// Ships the Mule runtime logs that the ECS awslogs driver writes to CloudWatch
-// into the Loki running alongside this container in the same task.
+// Ships the Mule application logs that the apps' log4j2 CloudWatch appender
+// writes into the Loki running alongside this container in the same task.
+//
+// Application logs only. The per-task /mule/<branch>/runtime-N groups hold the
+// runtime and container logs and stay in CloudWatch - they are an incident-time
+// concern, and keeping them out of Loki keeps ingestion and storage down.
 //
 // This sidecar exists so Grafana never queries an AWS API directly. Cost is
 // bounded by this always-on container plus Loki's capped S3 retention; there is
@@ -25,10 +29,12 @@ otelcol.receiver.awscloudwatch "mule" {
 
 		groups {
 			autodiscover {
-				// Matches /mule/<branch>/runtime-1, runtime-2, ... so extra
-				// runtime tasks are picked up without a config change.
-				prefix = sys.env("MULE_LOG_GROUP_PREFIX")
-				limit  = 10
+				// The prefix is the full name of the single app log group, so
+				// this resolves to exactly that one group. Every app and every
+				// task writes to one stream in it, so there is nothing left to
+				// discover - hence limit 1.
+				prefix = sys.env("MULE_APP_LOG_GROUP")
+				limit  = 1
 			}
 		}
 	}

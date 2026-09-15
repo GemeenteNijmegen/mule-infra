@@ -1,4 +1,6 @@
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import { Aspects, Duration, Fn, RemovalPolicy, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_logs as logs, aws_amazonmq as amazonmq } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
@@ -48,13 +50,18 @@ export class MuleRuntimeStack extends Stack {
       vpc: this.vpc,
     });
 
+    const brokerPasswordOptions = {
+      passwordLength: 20,
+      // Minimum 12 characters, at least 4 unique characters.
+      // Can't contain commas (,), colons (:), equals signs (=), spaces or non-printable ASCII characters.
+      excludeCharacters: ',:= "\'\/@',
+    };
     const brokerUser = new Secret(this, 'ActiveMQUserSecret', {
-      generateSecretString: {
-        passwordLength: 20,
-        // Minimum 12 characters, at least 4 unique characters.
-        // Can't contain commas (,), colons (:), equals signs (=), spaces or non-printable ASCII characters.
-        excludeCharacters: ',:= "\'\/@',
-      },
+      generateSecretString: brokerPasswordOptions,
+    });
+    const brokerAppUser = new Secret(this, 'ActiveMQAppUserSecret', {
+      description: 'Password of the ActiveMQ "mule" user (publish/subscribe, no console access)',
+      generateSecretString: brokerPasswordOptions,
     });
 
     const messageQueueSecurityGroup = new ec2.SecurityGroup(this, 'MessageQueueSecurityGroup', {
@@ -65,39 +72,120 @@ export class MuleRuntimeStack extends Stack {
     this.messageQueueSecurityGroup = messageQueueSecurityGroup;
 
     const privateSubnetIds = this.vpc.privateSubnets.map(subnet => subnet.subnetId);
-    const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
-      // TODO: rename this
-      brokerName: 'MuleMessageQueueDev',
-      deploymentMode: 'ACTIVE_STANDBY_MULTI_AZ',
+
+    // The properties Amazon MQ cannot change in place: setting any of them
+    // differently replaces the broker. Kept in one object so the name hash
+    // below can never drift from what is actually deployed.
+    const brokerReplacementProperties = {
+      // Single instance: the queue is mostly used by the Mule apps during office
+      // hours and their callers retry, so a restart is cheaper than paying for
+      // a standby.
+      deploymentMode: 'SINGLE_INSTANCE',
       engineType: 'ACTIVEMQ',
-      // TODO: not ready for production!
-      hostInstanceType: 'mq.t3.micro',
       // Kept private: the web console and OpenWire endpoints are reached from
       // inside the VPC only. Developers tunnel to the console via
       // scripts/mq-console.sh (SSM + the on-demand tinyproxy task).
       publiclyAccessible: false,
+      // Which private subnet the broker lands in. The subnet *ids* belong here
+      // too - they force a replacement as well - but they are unresolved SSM
+      // tokens at synth time, so the index is what can be hashed. Repointing
+      // the landing zone's private-subnet-1 parameter is therefore the one
+      // replacement this hash does not notice.
+      subnetIndex: 0,
+    };
+
+    // Amazon MQ requires an explicit broker name, unique per account and
+    // region, and changing it replaces the broker. A fixed name therefore
+    // deadlocks every replacing update: CloudFormation creates the new broker
+    // before deleting the old one, and the name is still taken. Suffixing the
+    // name with a hash of the properties above means such an update lands
+    // under a name of its own, while in-place updates (engine version,
+    // instance type, users, maintenance window) leave the name alone.
+    const brokerNameSuffix = crypto.createHash('md5')
+      .update(JSON.stringify(brokerReplacementProperties))
+      .digest('hex')
+      .substring(0, 8);
+
+    // Broker-wide defaults: per-destination dead-letter queues, memory limits
+    // and prefetch. Attaching this replaces Amazon MQ's default configuration,
+    // so the file is a complete activemq.xml. engineVersion is deliberately
+    // unset: autoMinorVersionUpgrade moves the broker between patch versions
+    // and a pin here would drift out of sync with it.
+    const brokerConfiguration = new amazonmq.CfnConfiguration(this, 'MuleBrokerConfiguration', {
+      name: 'MuleMessageQueueConfig',
+      engineType: brokerReplacementProperties.engineType,
+      description: 'Destination policies and dead-letter strategy for the Mule message queue',
+      data: fs.readFileSync(path.join(__dirname, 'activemq/broker-configuration.xml')).toString('base64'),
+    });
+
+    // Amazon MQ can only publish broker logs if CloudWatch Logs allows it to.
+    // The console sets this up implicitly; CloudFormation does not.
+    const brokerLogsPolicy = new logs.CfnResourcePolicy(this, 'AmazonMqLogsResourcePolicy', {
+      policyName: 'AmazonMqLogs',
+      policyDocument: JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [{
+          Effect: 'Allow',
+          Principal: { Service: 'mq.amazonaws.com' },
+          Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
+          Resource: `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/amazonmq/*`,
+          Condition: { StringEquals: { 'aws:SourceAccount': this.account } },
+        }],
+      }),
+    });
+
+    const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
+      brokerName: `MuleMessageQueue-${brokerNameSuffix}`,
+      deploymentMode: brokerReplacementProperties.deploymentMode,
+      engineType: brokerReplacementProperties.engineType,
+      // Pinned so a stack update never silently moves the broker to whatever
+      // version AWS defaults to; minor patches still land automatically.
+      engineVersion: '5.19',
+      autoMinorVersionUpgrade: true,
+      // Applying a new revision reboots the broker; it is not a replacement, so
+      // this is not part of brokerReplacementProperties above.
+      configuration: {
+        id: brokerConfiguration.attrId,
+        revision: brokerConfiguration.attrRevision,
+      },
+      hostInstanceType: props.configuration.mqHostInstanceType,
+      // Shipped to /aws/amazonmq/broker/<broker-id>/{general,audit}.
+      logs: { general: true, audit: true },
+      // Single instance means patching is a hard interruption, so keep it
+      // outside office hours.
+      maintenanceWindowStartTime: {
+        dayOfWeek: 'TUESDAY',
+        timeOfDay: '02:00',
+        timeZone: 'Europe/Amsterdam',
+      },
+      publiclyAccessible: brokerReplacementProperties.publiclyAccessible,
       securityGroups: [messageQueueSecurityGroup.securityGroupId],
-      subnetIds: privateSubnetIds.slice(0, 2),
+      subnetIds: [privateSubnetIds[brokerReplacementProperties.subnetIndex]],
       users: [{
         username: 'admin',
         password: brokerUser.secretValue.toString(),
         consoleAccess: true,
+      }, {
+        // No groups needed: the broker configuration has no authorizationPlugin,
+        // so every authenticated user can publish and subscribe on any destination.
+        username: 'mule',
+        password: brokerAppUser.secretValue.toString(),
+        consoleAccess: false,
       }],
     });
+    cfnBroker.addResourceDependency(brokerLogsPolicy);
 
-    // Amazon MQ serves the ActiveMQ web console on port 8162 of each broker
-    // instance host. ACTIVE_STANDBY_MULTI_AZ has two instances (-1 and -2); only
-    // the currently active one serves the console, so publish both URLs and let
-    // scripts/mq-console.sh probe which is live. Derived from the broker id
-    // (cfnBroker.ref) so nothing is hard-coded.
-    this.activeMqConsoleUrls = [1, 2].map(
-      instance => `https://${cfnBroker.ref}-${instance}.mq.${this.region}.amazonaws.com:${Statics.activeMqConsolePort}`,
-    );
+    // Amazon MQ serves the ActiveMQ web console on port 8162 of the broker
+    // instance host, numbered from 1. Derived from the broker id (cfnBroker.ref)
+    // so nothing is hard-coded. Reached via scripts/mq-console.sh.
+    this.activeMqConsoleUrls = [
+      `https://${cfnBroker.ref}-1.mq.${this.region}.amazonaws.com:${Statics.activeMqConsolePort}`,
+    ];
 
     new StringParameter(this, 'ActiveMqConsoleUrls', {
       parameterName: Statics.ssmActiveMqConsoleUrls,
       stringValue: this.activeMqConsoleUrls.join(','),
-      description: 'ActiveMQ web console URLs for both AZ instances; reach them via scripts/mq-console.sh',
+      description: 'ActiveMQ web console URLs per broker instance; reach them via scripts/mq-console.sh',
     });
 
     new StringParameter(this, 'ActiveMqAdminSecretArn', {
@@ -145,6 +233,19 @@ export class MuleRuntimeStack extends Stack {
         recordName,
         target: RecordTarget.fromIpAddresses(ip),
       });
+    });
+
+    // One shared log group and stream for the Mule application logs, written
+    // straight from the apps' log4j2 CloudWatch appender. Deliberately outside
+    // the per-task loop below: every task writes to the same stream, so a
+    // correlation ID is readable in one place instead of being spread over the
+    // per-task runtime groups. Retention is longer than the runtime groups' one
+    // month - app logs are the ones that get looked up long after the fact,
+    // system logs are only useful while an incident is live.
+    const appLogGroup = new logs.LogGroup(this, 'MuleAppLogGroup', {
+      logGroupName: Statics.muleAppLogGroupName(props.configuration.branchName),
+      retention: logs.RetentionDays.SIX_MONTHS,
+      removalPolicy: RemovalPolicy.RETAIN,
     });
 
     const loadBalancerTargets = [];
@@ -227,11 +328,14 @@ export class MuleRuntimeStack extends Stack {
           // Ready-to-use ActiveMQ broker URL for the Mule JMS connector (used verbatim as
           // <jms:factory-configuration brokerUrl="${ACTIVEMQ_BROKER_URL}" />).
           // Amazon MQ only exposes TLS OpenWire endpoints (ssl://...:61617) - there is no plaintext
-          // tcp:// listener. The failover: transport lists both instances of the ACTIVE_STANDBY_MULTI_AZ
-          // deployment so the client reconnects automatically across failover and maintenance windows.
-          ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?randomize=false&timeout=3000`,
-          ACTIVEMQ_USERNAME: 'admin',
+          // tcp:// listener. The failover: transport reconnects automatically after a broker
+          // restart; timeout keeps sends fail-fast in the meantime instead of blocking a thread
+          // for the whole restart (the failover default is -1, wait forever).
+          ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?timeout=3000`,
+          ACTIVEMQ_USERNAME: 'mule',
           MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
+          MULE_APP_LOG_GROUP: appLogGroup.logGroupName,
+          MULE_APP_LOG_STREAM: Statics.muleAppLogStreamName,
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -240,9 +344,12 @@ export class MuleRuntimeStack extends Stack {
           ANYPOINT_ENV_ID: ecs.Secret.fromSsmParameter(envIdParam),
           MULE_KEYSTORE_PASSWORD: ecs.Secret.fromSecretsManager(keystorePassword),
           MULE_TRUSTSTORE_PASSWORD: ecs.Secret.fromSecretsManager(truststorePassword),
-          ACTIVEMQ_PASSWORD: ecs.Secret.fromSecretsManager(brokerUser),
+          ACTIVEMQ_PASSWORD: ecs.Secret.fromSecretsManager(brokerAppUser),
         },
       });
+
+      appLogGroup.grant(taskDefinition.taskRole,
+        'logs:CreateLogStream', 'logs:PutLogEvents', 'logs:DescribeLogStreams');
 
       licenseSecret.grantRead(taskDefinition.taskRole);
       trustStore.grantRead(taskDefinition.taskRole);
