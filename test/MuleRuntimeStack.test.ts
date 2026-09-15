@@ -161,4 +161,21 @@ describe('MuleRuntimeStack taskCount logic', () => {
     // Without the policy in place first, the broker cannot create its log groups.
     expect(broker.DependsOn).toContain(policyLogicalId);
   });
+
+  test('adds a mule user without console access next to admin', () => {
+    const app = new App();
+    const stack = new MuleRuntimeStack(app, 'MuleRuntimeStackBrokerUsers', {
+      ...defaultProps,
+      configuration: { ...defaultProps.configuration, taskCount: 1 },
+    });
+
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties('AWS::AmazonMQ::Broker', {
+      Users: [
+        Match.objectLike({ Username: 'admin', ConsoleAccess: true }),
+        Match.objectLike({ Username: 'mule', ConsoleAccess: false }),
+      ],
+    });
+  });
 });

@@ -50,13 +50,18 @@ export class MuleRuntimeStack extends Stack {
       vpc: this.vpc,
     });
 
+    const brokerPasswordOptions = {
+      passwordLength: 20,
+      // Minimum 12 characters, at least 4 unique characters.
+      // Can't contain commas (,), colons (:), equals signs (=), spaces or non-printable ASCII characters.
+      excludeCharacters: ',:= "\'\/@',
+    };
     const brokerUser = new Secret(this, 'ActiveMQUserSecret', {
-      generateSecretString: {
-        passwordLength: 20,
-        // Minimum 12 characters, at least 4 unique characters.
-        // Can't contain commas (,), colons (:), equals signs (=), spaces or non-printable ASCII characters.
-        excludeCharacters: ',:= "\'\/@',
-      },
+      generateSecretString: brokerPasswordOptions,
+    });
+    const brokerAppUser = new Secret(this, 'ActiveMQAppUserSecret', {
+      description: 'Password of the ActiveMQ "mule" user (publish/subscribe, no console access)',
+      generateSecretString: brokerPasswordOptions,
     });
 
     const messageQueueSecurityGroup = new ec2.SecurityGroup(this, 'MessageQueueSecurityGroup', {
@@ -160,6 +165,12 @@ export class MuleRuntimeStack extends Stack {
         username: 'admin',
         password: brokerUser.secretValue.toString(),
         consoleAccess: true,
+      }, {
+        // No groups needed: the broker configuration has no authorizationPlugin,
+        // so every authenticated user can publish and subscribe on any destination.
+        username: 'mule',
+        password: brokerAppUser.secretValue.toString(),
+        consoleAccess: false,
       }],
     });
     cfnBroker.addResourceDependency(brokerLogsPolicy);
