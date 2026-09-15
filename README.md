@@ -184,9 +184,14 @@ through the same on-demand tinyproxy task:
 
 The script starts the proxy task, opens an SSM tunnel on `localhost:8888`,
 probes both `ACTIVE_STANDBY_MULTI_AZ` instances to find the active one, and
-prints its console URL plus the `admin` credentials (read from Secrets Manager).
-Set your browser's HTTP/HTTPS proxy to `http://localhost:8888` and open the
-printed URL — the browser tunnels `CONNECT <broker-host>:8162` through the proxy,
-so the broker's TLS certificate validates normally. Press `Ctrl+C` to tear down
-the tunnel and the task.
+prints the `admin` credentials (read from Secrets Manager). It then opens the
+console in an isolated browser window — a temporary Firefox profile, or Chrome
+if Firefox is not installed — preconfigured to use `http://localhost:8888` as
+its proxy, so your regular browser settings are untouched. The browser tunnels
+`CONNECT <broker-host>:8162` through the proxy, so the broker's TLS certificate
+validates normally. If neither browser is found, the script prints the proxy
+and URL to configure manually.
+
+Press `Ctrl+C` or close that browser window to tear down the tunnel and the task;
+the temporary profile is deleted as well.
 
