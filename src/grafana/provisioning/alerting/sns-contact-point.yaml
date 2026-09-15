@@ -1,0 +1,40 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: mule-runtime-errors-sns
+    receivers:
+      - uid: mule-runtime-errors-sns
+        type: sns
+        settings:
+          api_url: "https://sns.__AWS_REGION__.amazonaws.com"
+          topic_arn: "__SNS_TOPIC_ARN__"
+          sigv4:
+            region: "__AWS_REGION__"
+          # The rule groups by application, so the subject can name it. SNS
+          # subjects are capped at 100 characters and allow no newlines.
+          subject: "Mule errors: {{ if .CommonLabels.applicationName }}{{ .CommonLabels.applicationName }}{{ else }}runtime alert{{ end }} ({{ .Status }})"
+          # .ExternalURL (GF_SERVER_ROOT_URL) is captured up here because the
+          # per-alert scope inside the range cannot see it.
+          message: |
+            {{ $grafana := .ExternalURL -}}
+            {{ range .Alerts.Firing -}}
+            {{ if index .Labels "applicationName" -}}
+            {{ index .Annotations "description" }}
+
+            Started: {{ .StartsAt }}
+
+            Debug in Grafana - opens the dashboard filtered to this application.
+            Click a correlation ID in "Errors by application" to load that
+            request's full trace:
+            {{ $grafana }}{{ index .Annotations "dashboard_path" }}
+
+            Explore query:
+            {{ index .Annotations "logs_query" }}
+            Silence this alert: {{ .SilenceURL }}
+            {{ else -}}
+            Grafana could not evaluate the Mule runtime error alert ({{ index .Labels "alertname" }}).
+            Loki is probably unreachable, so Mule errors are NOT being detected right now.
+            Alert: {{ .GeneratorURL }}
+            {{ end }}
+            {{ end -}}

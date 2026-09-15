@@ -18,7 +18,22 @@ export class Statics {
   static readonly secretMuleLicense = `/${Statics.projectName}/mule/license`;
   static readonly secretMuleKeystorePassword = `/${Statics.projectName}/mule/keystorepassword`;
   static readonly secretMuleTruststorePassword = `/${Statics.projectName}/mule/truststorepassword`;
+  static readonly secretMuleCredentials = `/${Statics.projectName}/mule/credentials`;
+  static readonly muleCredentialNames: string[] = [
+    // Add Mule application credential names here, e.g.:
+    // 'notifynl-nijm-sapi',
+    'hello-world',
+    'notify-nl',
+    'corsa',
+  ];
 
+  /**
+   * Mule application logs go to one shared CloudWatch log group and stream,
+   * separate from the per-task runtime groups that hold the system logs. One
+   * stream for every app and every task keeps a correlation ID readable in a
+   * single place.
+   */
+  static readonly muleAppLogStreamName = 'apps';
   // MARK: environments
   static readonly buildEnvironment = {
     account: '836443378780',
@@ -48,7 +63,10 @@ export class Statics {
   static readonly secretMuleTrustStore = `/${Statics.projectName}/mule/truststore`;
   static readonly secretMuleKeyStore = `/${Statics.projectName}/mule/keystore`;
   static readonly muleDockerImageRepositoryArn = 'arn:aws:ecr:eu-central-1:836443378780:repository/mule-docker-image';
-  static readonly muleDockerImageHash = '80a493a7156142b369b7ab364387fed6744dcfe6';
+  static readonly muleDockerImageHash = '709d144f846bf7f35ed83a33533db854ffc1a8b3';
+  static readonly grafanaDockerImage = 'grafana/grafana:13.1.3';
+  static readonly lokiDockerImage = 'grafana/loki:3.5.3';
+  static readonly alloyDockerImage = 'grafana/alloy:v1.19.2';
 
   // MARK: proxy task (on-demand tinyproxy)
   static readonly proxyContainerPort = 8888;
@@ -56,5 +74,19 @@ export class Statics {
   static readonly ssmProxyTaskDefinitionArn = `/${Statics.projectName}/proxy/task-definition-arn`;
   static readonly ssmProxySubnetId = `/${Statics.projectName}/proxy/subnet-id`;
   static readonly ssmProxySecurityGroupId = `/${Statics.projectName}/proxy/security-group-id`;
+
+  // MARK: ActiveMQ web console (reachable via scripts/mq-console.sh)
+  static readonly activeMqConsolePort = 8162;
+  static readonly ssmActiveMqConsoleUrls = `/${Statics.projectName}/activemq/console-urls`;
+  static readonly ssmActiveMqAdminSecretArn = `/${Statics.projectName}/activemq/admin-secret-arn`;
+
+  /**
+   * Shared CloudWatch log group holding the Mule application logs for a branch.
+   * Written by the apps, read by the Alloy sidecar - both derive it from here so
+   * the two cannot drift apart.
+   */
+  static muleAppLogGroupName(branchName: string) {
+    return `/mule/${branchName}/apps`;
+  }
 
 }

@@ -1,6 +1,8 @@
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { GemeenteNijmegenVpc, PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
-import { Aspects, Duration, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam } from 'aws-cdk-lib';
+import { Aspects, Duration, Fn, RemovalPolicy, Stack, StackProps, aws_ec2 as ec2, aws_ecs as ecs, aws_efs as efs, aws_iam as iam, aws_logs as logs, aws_amazonmq as amazonmq } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { FargateTaskDefinition } from 'aws-cdk-lib/aws-ecs';
@@ -20,6 +22,8 @@ interface MuleRuntimeStackProps extends StackProps, Configurable { }
 export class MuleRuntimeStack extends Stack {
   public readonly vpc: ec2.IVpc;
   public readonly cluster: ecs.ICluster;
+  public readonly messageQueueSecurityGroup: ec2.SecurityGroup;
+  public readonly activeMqConsoleUrls: string[];
 
   constructor(scope: Construct, id: string, private readonly props: MuleRuntimeStackProps) {
     super(scope, id, props);
@@ -46,6 +50,150 @@ export class MuleRuntimeStack extends Stack {
       vpc: this.vpc,
     });
 
+    const brokerPasswordOptions = {
+      passwordLength: 20,
+      // Minimum 12 characters, at least 4 unique characters.
+      // Can't contain commas (,), colons (:), equals signs (=), spaces or non-printable ASCII characters.
+      excludeCharacters: ',:= "\'\/@',
+    };
+    const brokerUser = new Secret(this, 'ActiveMQUserSecret', {
+      generateSecretString: brokerPasswordOptions,
+    });
+    const brokerAppUser = new Secret(this, 'ActiveMQAppUserSecret', {
+      description: 'Password of the ActiveMQ "mule" user (publish/subscribe, no console access)',
+      generateSecretString: brokerPasswordOptions,
+    });
+
+    const messageQueueSecurityGroup = new ec2.SecurityGroup(this, 'MessageQueueSecurityGroup', {
+      vpc: this.vpc,
+      // allowAllOutbound: false,
+      description: 'Security group for ActiveMQ message queue',
+    });
+    this.messageQueueSecurityGroup = messageQueueSecurityGroup;
+
+    const privateSubnetIds = this.vpc.privateSubnets.map(subnet => subnet.subnetId);
+
+    // The properties Amazon MQ cannot change in place: setting any of them
+    // differently replaces the broker. Kept in one object so the name hash
+    // below can never drift from what is actually deployed.
+    const brokerReplacementProperties = {
+      // Single instance: the queue is mostly used by the Mule apps during office
+      // hours and their callers retry, so a restart is cheaper than paying for
+      // a standby.
+      deploymentMode: 'SINGLE_INSTANCE',
+      engineType: 'ACTIVEMQ',
+      // Kept private: the web console and OpenWire endpoints are reached from
+      // inside the VPC only. Developers tunnel to the console via
+      // scripts/mq-console.sh (SSM + the on-demand tinyproxy task).
+      publiclyAccessible: false,
+      // Which private subnet the broker lands in. The subnet *ids* belong here
+      // too - they force a replacement as well - but they are unresolved SSM
+      // tokens at synth time, so the index is what can be hashed. Repointing
+      // the landing zone's private-subnet-1 parameter is therefore the one
+      // replacement this hash does not notice.
+      subnetIndex: 0,
+    };
+
+    // Amazon MQ requires an explicit broker name, unique per account and
+    // region, and changing it replaces the broker. A fixed name therefore
+    // deadlocks every replacing update: CloudFormation creates the new broker
+    // before deleting the old one, and the name is still taken. Suffixing the
+    // name with a hash of the properties above means such an update lands
+    // under a name of its own, while in-place updates (engine version,
+    // instance type, users, maintenance window) leave the name alone.
+    const brokerNameSuffix = crypto.createHash('md5')
+      .update(JSON.stringify(brokerReplacementProperties))
+      .digest('hex')
+      .substring(0, 8);
+
+    // Broker-wide defaults: per-destination dead-letter queues, memory limits
+    // and prefetch. Attaching this replaces Amazon MQ's default configuration,
+    // so the file is a complete activemq.xml. engineVersion is deliberately
+    // unset: autoMinorVersionUpgrade moves the broker between patch versions
+    // and a pin here would drift out of sync with it.
+    const brokerConfiguration = new amazonmq.CfnConfiguration(this, 'MuleBrokerConfiguration', {
+      name: 'MuleMessageQueueConfig',
+      engineType: brokerReplacementProperties.engineType,
+      description: 'Destination policies and dead-letter strategy for the Mule message queue',
+      data: fs.readFileSync(path.join(__dirname, 'activemq/broker-configuration.xml')).toString('base64'),
+    });
+
+    // Amazon MQ can only publish broker logs if CloudWatch Logs allows it to.
+    // The console sets this up implicitly; CloudFormation does not.
+    const brokerLogsPolicy = new logs.CfnResourcePolicy(this, 'AmazonMqLogsResourcePolicy', {
+      policyName: 'AmazonMqLogs',
+      policyDocument: JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [{
+          Effect: 'Allow',
+          Principal: { Service: 'mq.amazonaws.com' },
+          Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
+          Resource: `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/amazonmq/*`,
+          Condition: { StringEquals: { 'aws:SourceAccount': this.account } },
+        }],
+      }),
+    });
+
+    const cfnBroker = new amazonmq.CfnBroker(this, 'MuleCfnBroker', {
+      brokerName: `MuleMessageQueue-${brokerNameSuffix}`,
+      deploymentMode: brokerReplacementProperties.deploymentMode,
+      engineType: brokerReplacementProperties.engineType,
+      // Pinned so a stack update never silently moves the broker to whatever
+      // version AWS defaults to; minor patches still land automatically.
+      engineVersion: '5.19',
+      autoMinorVersionUpgrade: true,
+      // Applying a new revision reboots the broker; it is not a replacement, so
+      // this is not part of brokerReplacementProperties above.
+      configuration: {
+        id: brokerConfiguration.attrId,
+        revision: brokerConfiguration.attrRevision,
+      },
+      hostInstanceType: props.configuration.mqHostInstanceType,
+      // Shipped to /aws/amazonmq/broker/<broker-id>/{general,audit}.
+      logs: { general: true, audit: true },
+      // Single instance means patching is a hard interruption, so keep it
+      // outside office hours.
+      maintenanceWindowStartTime: {
+        dayOfWeek: 'TUESDAY',
+        timeOfDay: '02:00',
+        timeZone: 'Europe/Amsterdam',
+      },
+      publiclyAccessible: brokerReplacementProperties.publiclyAccessible,
+      securityGroups: [messageQueueSecurityGroup.securityGroupId],
+      subnetIds: [privateSubnetIds[brokerReplacementProperties.subnetIndex]],
+      users: [{
+        username: 'admin',
+        password: brokerUser.secretValue.toString(),
+        consoleAccess: true,
+      }, {
+        // No groups needed: the broker configuration has no authorizationPlugin,
+        // so every authenticated user can publish and subscribe on any destination.
+        username: 'mule',
+        password: brokerAppUser.secretValue.toString(),
+        consoleAccess: false,
+      }],
+    });
+    cfnBroker.addResourceDependency(brokerLogsPolicy);
+
+    // Amazon MQ serves the ActiveMQ web console on port 8162 of the broker
+    // instance host, numbered from 1. Derived from the broker id (cfnBroker.ref)
+    // so nothing is hard-coded. Reached via scripts/mq-console.sh.
+    this.activeMqConsoleUrls = [
+      `https://${cfnBroker.ref}-1.mq.${this.region}.amazonaws.com:${Statics.activeMqConsolePort}`,
+    ];
+
+    new StringParameter(this, 'ActiveMqConsoleUrls', {
+      parameterName: Statics.ssmActiveMqConsoleUrls,
+      stringValue: this.activeMqConsoleUrls.join(','),
+      description: 'ActiveMQ web console URLs per broker instance; reach them via scripts/mq-console.sh',
+    });
+
+    new StringParameter(this, 'ActiveMqAdminSecretArn', {
+      parameterName: Statics.ssmActiveMqAdminSecretArn,
+      stringValue: brokerUser.secretArn,
+      description: 'Secrets Manager ARN of the ActiveMQ "admin" user credentials',
+    });
+
     const muleRuntimeEcr = ecr.Repository.fromRepositoryArn(this, 'MuleDockerImageRepository', Statics.muleDockerImageRepositoryArn);
     const licenseSecret = Secret.fromSecretNameV2(this, 'MuleLicenseLic', Statics.secretMuleLicense);
     const clientSecret = Secret.fromSecretNameV2(this, 'MuleAnypointClientSecret', Statics.secretMuleAnypointClientSecret);
@@ -53,6 +201,7 @@ export class MuleRuntimeStack extends Stack {
     const keyStore = Secret.fromSecretNameV2(this, 'MuleKeyStore', Statics.secretMuleKeyStore);
     const keystorePassword = Secret.fromSecretNameV2(this, 'MuleKeystorePassword', Statics.secretMuleKeystorePassword);
     const truststorePassword = Secret.fromSecretNameV2(this, 'MuleTruststorePassword', Statics.secretMuleTruststorePassword);
+    const secretsNameBase = Secret.fromSecretNameV2(this, 'MuleSecretsNameBase', Statics.secretMuleCredentials);
 
     const clientIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointClientId', Statics.ssmMuleAnypointClientId);
     const orgIdParam = StringParameter.fromStringParameterName(this, 'MuleAnypointOrgId', Statics.ssmMuleAnypointOrgId);
@@ -86,6 +235,19 @@ export class MuleRuntimeStack extends Stack {
       });
     });
 
+    // One shared log group and stream for the Mule application logs, written
+    // straight from the apps' log4j2 CloudWatch appender. Deliberately outside
+    // the per-task loop below: every task writes to the same stream, so a
+    // correlation ID is readable in one place instead of being spread over the
+    // per-task runtime groups. Retention is longer than the runtime groups' one
+    // month - app logs are the ones that get looked up long after the fact,
+    // system logs are only useful while an incident is live.
+    const appLogGroup = new logs.LogGroup(this, 'MuleAppLogGroup', {
+      logGroupName: Statics.muleAppLogGroupName(props.configuration.branchName),
+      retention: logs.RetentionDays.SIX_MONTHS,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
     const loadBalancerTargets = [];
     let previousService: ecs.FargateService | undefined;
 
@@ -99,6 +261,11 @@ export class MuleRuntimeStack extends Stack {
     // Preserving the mule-agent.yml is required to maintain the server's registration and connectivity with Anypoint Runtime Manager.
     const loopCount = Math.max(1, props.configuration.taskCount);
     for (let i = 1; i <= loopCount; i++) {
+      const logGroup = new logs.LogGroup(this, `MuleRuntimeLogGroup${i}`, {
+        logGroupName: `/mule/${props.configuration.branchName}/runtime-${i}`,
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.RETAIN,
+      });
       const accessPoint = new efs.AccessPoint(this, `MuleEfsAccessPoint${i}`, {
         fileSystem,
         path: `/mule-data-${i}`,
@@ -146,7 +313,10 @@ export class MuleRuntimeStack extends Stack {
 
       const container = taskDefinition.addContainer('MuleRuntimeContainer', {
         image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, Statics.muleDockerImageHash),
-        logging: ecs.LogDrivers.awsLogs({ streamPrefix: `mule-runtime-${i}` }),
+        logging: ecs.LogDrivers.awsLogs({
+          streamPrefix: `mule-runtime-${i}`,
+          logGroup,
+        }),
         memoryLimitMiB: props.configuration.memoryLimitMiB,
         environment: {
           SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
@@ -155,6 +325,17 @@ export class MuleRuntimeStack extends Stack {
           MULE_KEYSTORE: keyStore.secretArn,
           // Set heap size as a percentage of container memory, and configure metaspace
           MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
+          // Ready-to-use ActiveMQ broker URL for the Mule JMS connector (used verbatim as
+          // <jms:factory-configuration brokerUrl="${ACTIVEMQ_BROKER_URL}" />).
+          // Amazon MQ only exposes TLS OpenWire endpoints (ssl://...:61617) - there is no plaintext
+          // tcp:// listener. The failover: transport reconnects automatically after a broker
+          // restart; timeout keeps sends fail-fast in the meantime instead of blocking a thread
+          // for the whole restart (the failover default is -1, wait forever).
+          ACTIVEMQ_BROKER_URL: `failover:(${Fn.join(',', cfnBroker.attrOpenWireEndpoints)})?timeout=3000`,
+          ACTIVEMQ_USERNAME: 'mule',
+          MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
+          MULE_APP_LOG_GROUP: appLogGroup.logGroupName,
+          MULE_APP_LOG_STREAM: Statics.muleAppLogStreamName,
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -163,8 +344,12 @@ export class MuleRuntimeStack extends Stack {
           ANYPOINT_ENV_ID: ecs.Secret.fromSsmParameter(envIdParam),
           MULE_KEYSTORE_PASSWORD: ecs.Secret.fromSecretsManager(keystorePassword),
           MULE_TRUSTSTORE_PASSWORD: ecs.Secret.fromSecretsManager(truststorePassword),
+          ACTIVEMQ_PASSWORD: ecs.Secret.fromSecretsManager(brokerAppUser),
         },
       });
+
+      appLogGroup.grant(taskDefinition.taskRole,
+        'logs:CreateLogStream', 'logs:PutLogEvents', 'logs:DescribeLogStreams');
 
       licenseSecret.grantRead(taskDefinition.taskRole);
       trustStore.grantRead(taskDefinition.taskRole);
@@ -172,6 +357,15 @@ export class MuleRuntimeStack extends Stack {
       clientSecret.grantRead(taskDefinition.obtainExecutionRole());
       truststorePassword.grantRead(taskDefinition.obtainExecutionRole());
       keystorePassword.grantRead(taskDefinition.obtainExecutionRole());
+      brokerUser.grantRead(taskDefinition.obtainExecutionRole());
+
+      // all mule secrets with the format of "/${Statics.projectName}/mule/credentials/" have enough IAM policy
+      taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${Statics.secretMuleCredentials}*`,
+        ],
+      }));
 
       container.addPortMappings(
         {
@@ -200,6 +394,9 @@ export class MuleRuntimeStack extends Stack {
         healthCheckGracePeriod: Duration.seconds(300),
         enableExecuteCommand: true,
       });
+
+      // Allow ECS service group to connect to the ActiveMQ OpenWire SSL endpoint.
+      ecsService.connections.allowTo(messageQueueSecurityGroup, ec2.Port.tcp(61617));
 
       if (previousService) {
         ecsService.node.addDependency(previousService);

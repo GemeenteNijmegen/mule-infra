@@ -82,6 +82,69 @@ Registration now works with the mule cli and is handled purely in the docker ent
         - The generated `${MULE_HOME}/conf/mule-agent.yml` file, along with the Mule apps, is stored on an attached EFS volume. This ensures the configuration persists across container restarts and deployments, so the server only needs to be registered once.
 - The service is updated.
 
+## Logging
+
+Mule **application** logs and Mule **runtime/system** logs are kept apart at the
+storage level, not by filtering after the fact:
+
+| Logs | Written by | Lands in |
+| --- | --- | --- |
+| Application | the app's own log4j2 CloudWatch appender | `/mule/<branch>/apps`, one shared stream, 6 months |
+| Runtime / system | the ECS `awslogs` driver on stdout | `/mule/<branch>/runtime-N`, one group per task, 1 month |
+
+Every application and every task writes to the **same** stream in the app group,
+so a correlation ID is readable in one place instead of being spread across the
+per-task runtime groups. The group name and stream name reach the containers as
+`MULE_APP_LOG_GROUP` / `MULE_APP_LOG_STREAM`; both derive from
+`Statics.muleAppLogGroupName()` so the runtime stack and the Alloy sidecar cannot
+drift apart. The appender runs inside the application JVM, so it writes under the
+**task** role — unlike the `awslogs` driver, which the ECS agent runs under the
+execution role.
+
+## Observability (Grafana, Loki, Alloy)
+
+Only the application logs are shipped into Loki, by a Grafana Alloy sidecar, so
+Grafana itself never queries an AWS API directly and the cost stays bounded by
+the always-on containers plus Loki's S3 lifecycle expiry. Runtime logs stay in
+CloudWatch: they are an incident-time concern, and leaving them out keeps Loki's
+ingestion and storage down. The Alloy task role can only read the app log group,
+so that split is enforced by IAM and not just by configuration.
+
+```mermaid
+flowchart LR
+    U["Browser"] --> ALB["Public ALB :80"]
+
+    subgraph muleTask["Mule runtime ECS tasks"]
+        MR["Mule runtime container"]
+        MA["Mule applications"]
+    end
+
+    MR -- "awslogs driver" --> CWR["CloudWatch Logs<br/>/mule/&lt;branch&gt;/runtime-*<br/>(stays in AWS)"]
+    MA -- "log4j2 CloudWatch appender" --> CWA["CloudWatch Logs<br/>/mule/&lt;branch&gt;/apps<br/>single shared stream"]
+
+    subgraph lokiTask["Loki ECS task"]
+        AL["Alloy sidecar<br/>otelcol.receiver.awscloudwatch"]
+        LK["Loki :3100"]
+        AL -- "loki.write over localhost<br/>job=mule" --> LK
+    end
+
+    CWA -- "FilterLogEvents<br/>poll 1m" --> AL
+    LK <--> S3[("S3 chunks + index<br/>21 day expiry")]
+
+    subgraph grafanaTask["Grafana ECS task"]
+        GR["Grafana :3000"]
+    end
+
+    ALB --> GR
+    GR -- "LogQL<br/>loki.mule-obs.local:3100" --> LK
+    GR -- "ERROR alert rule" --> SNS["SNS topic"] --> MAIL["Email subscription"]
+```
+
+Everything is defined in [`src/GrafanaStack.ts`](src/GrafanaStack.ts); the Alloy
+pipeline lives in [`src/grafana/loki/config.alloy`](src/grafana/loki/config.alloy)
+and the dashboard, datasource and alert rule under
+[`src/grafana/`](src/grafana/).
+
 ## VPC Proxy (Tinyproxy)
 
 An on-demand tinyproxy ECS task definition is deployed in `development` and `acceptance` environments to forward local laptop traffic to VPC / internal resources via AWS SSM port-forwarding.
@@ -107,4 +170,23 @@ Once active, test connectivity to internal VPC endpoints:
 ```bash
 curl http://nijm-cko-t-001.gn.karelstad.nl --proxy http://localhost:8888 -v
 ```
+
+## Amazon MQ Web Console
+
+The managed ActiveMQ broker is **not** publicly accessible; its web console
+(port 8162) is only reachable from inside the VPC. Use
+[`scripts/mq-console.sh`](scripts/mq-console.sh), which tunnels to the console
+through the same on-demand tinyproxy task:
+
+```bash
+./scripts/mq-console.sh --profile <aws-profile>
+```
+
+The script starts the proxy task, opens an SSM tunnel on `localhost:8888`,
+probes both `ACTIVE_STANDBY_MULTI_AZ` instances to find the active one, and
+prints its console URL plus the `admin` credentials (read from Secrets Manager).
+Set your browser's HTTP/HTTPS proxy to `http://localhost:8888` and open the
+printed URL — the browser tunnels `CONNECT <broker-host>:8162` through the proxy,
+so the broker's TLS certificate validates normally. Press `Ctrl+C` to tear down
+the tunnel and the task.
 

@@ -8,6 +8,11 @@ import { Statics } from './Statics';
 export interface ProxyStackProps extends StackProps, Configurable {
   readonly vpc: ec2.IVpc;
   readonly cluster: ecs.ICluster;
+  /**
+   * The ActiveMQ broker security group. The proxy is granted egress to its web
+   * console port so developers can reach the console through the SSM tunnel.
+   */
+  readonly messageQueueSecurityGroup: ec2.ISecurityGroup;
 }
 
 /**
@@ -30,6 +35,17 @@ export class ProxyStack extends Stack {
       allowAllOutbound: true,
     });
 
+    // Let the proxy reach the Amazon MQ web console (port 8162) on the broker
+    // instances. Attached from the proxy side with allowTo() so the cross-stack
+    // security-group reference resolves as ProxyStack -> MuleRuntimeStack,
+    // matching the existing dependency direction (vpc/cluster) rather than
+    // creating a cyclic one.
+    proxySg.connections.allowTo(
+      props.messageQueueSecurityGroup,
+      ec2.Port.tcp(Statics.activeMqConsolePort),
+      'ActiveMQ web console via on-demand proxy',
+    );
+
     const proxyTaskDefinition = new ecs.FargateTaskDefinition(this, 'ProxyTaskDefinition', {
       cpu: 256,
       memoryLimitMiB: 512,
@@ -37,13 +53,16 @@ export class ProxyStack extends Stack {
 
     // Write a minimal tinyproxy config and start the proxy.
     // Allowing all sources is safe: access is gated by the SSM session.
+    // ConnectPort limits the CONNECT (HTTPS tunnelling) method: 443 for normal
+    // TLS sites and 8162 for the Amazon MQ web console. Once any ConnectPort is
+    // listed the method is deny-by-default, so 443 must stay in the list.
     proxyTaskDefinition.addContainer('TinyproxyContainer', {
       image: ecs.ContainerImage.fromRegistry('vimagick/tinyproxy'),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'tinyproxy' }),
       command: [
         'sh', '-c',
         [
-          `printf 'Port ${Statics.proxyContainerPort}\\nListen 0.0.0.0\\nTimeout 600\\nMaxClients 20\\nAllow 0.0.0.0/0\\nLogLevel Critical\\n'`,
+          `printf 'Port ${Statics.proxyContainerPort}\\nListen 0.0.0.0\\nTimeout 600\\nMaxClients 20\\nAllow 0.0.0.0/0\\nConnectPort 443\\nConnectPort ${Statics.activeMqConsolePort}\\nLogLevel Critical\\n'`,
           '> /etc/tinyproxy/tinyproxy.conf',
           '&& tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf',
         ].join(' '),
