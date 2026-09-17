@@ -435,7 +435,7 @@ export class MuleRuntimeStack extends Stack {
       {
         zone: hostedZone,
         target: RecordTarget.fromAlias(new LoadBalancerTarget(lb)),
-        recordName: '*',
+        recordName: 'data',
       },
     );
 
