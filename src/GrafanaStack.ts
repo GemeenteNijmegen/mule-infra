@@ -17,8 +17,12 @@ import {
   aws_sns as sns,
   aws_sns_subscriptions as subscriptions,
 } from 'aws-cdk-lib';
+import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import { ApplicationLoadBalancer, ApplicationProtocol } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
+import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
@@ -165,21 +169,6 @@ export class GrafanaStack extends Stack {
       healthCheckGracePeriod: Duration.seconds(120),
       enableExecuteCommand: true,
     });
-    const httpListener = loadBalancer.addListener('GrafanaHttpListener', {
-      port: 80,
-      protocol: ApplicationProtocol.HTTP,
-    });
-    httpListener.addTargets('GrafanaTarget', {
-      protocol: ApplicationProtocol.HTTP,
-      targets: [service.loadBalancerTarget({
-        containerName: 'GrafanaContainer',
-        containerPort: 3000,
-      })],
-      healthCheck: {
-        path: '/api/health',
-        healthyHttpCodes: '200',
-      },
-    });
     new CfnOutput(this, 'GrafanaUrl', {
       value: `http://${loadBalancer.loadBalancerDnsName}`,
     });
@@ -188,6 +177,41 @@ export class GrafanaStack extends Stack {
     });
     new CfnOutput(this, 'GrafanaAlertTopicArn', {
       value: alertTopic.topicArn,
+    });
+
+    const hostedZone = this.importHostedzone();
+    const certificate = new Certificate(this, 'GrafanaCertificate', {
+      domainName: `grafana.${hostedZone.zoneName}`,
+      validation: CertificateValidation.fromDns(hostedZone),
+    });
+
+    const listener = loadBalancer.addListener('HTTPListener', {
+      port: 443,
+      certificates: [certificate],
+    });
+
+    new ARecord(
+      this,
+      'a-record',
+      {
+        zone: hostedZone,
+        target: RecordTarget.fromAlias(new LoadBalancerTarget(loadBalancer)),
+        recordName: 'grafana',
+      },
+    );
+
+    const loadBalancerTargets = [service.loadBalancerTarget({
+      containerName: 'GrafanaContainer',
+      containerPort: 3000,
+    })];
+
+    listener.addTargets('Target', {
+      protocol: ApplicationProtocol.HTTP,
+      targets: loadBalancerTargets,
+      healthCheck: {
+        path: '/api/health',
+        healthyHttpCodes: '200',
+      },
     });
   }
 
@@ -321,4 +345,18 @@ export class GrafanaStack extends Stack {
 
     return `http://loki.${namespace.namespaceName}:3100`;
   }
+
+  private importHostedzone() {
+    return HostedZone.fromHostedZoneAttributes(this, 'hostedzone', {
+      hostedZoneId: StringParameter.valueForStringParameter(
+        this,
+        Statics.accountHostedzoneId,
+      ),
+      zoneName: StringParameter.valueForStringParameter(
+        this,
+        Statics.accountHostedzoneName,
+      ),
+    });
+  }
 }
+
