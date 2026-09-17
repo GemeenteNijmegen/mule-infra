@@ -17,8 +17,12 @@ import {
   aws_sns as sns,
   aws_sns_subscriptions as subscriptions,
 } from 'aws-cdk-lib';
+import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import { ApplicationLoadBalancer, ApplicationProtocol } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
+import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
@@ -53,6 +57,14 @@ export class GrafanaStack extends Stack {
       },
       removalPolicy: RemovalPolicy.RETAIN,
     });
+
+    const { grafanaOAuthClientId, grafanaOAuthProviderDomain, grafanaOAuthRealm } = props.configuration;
+    if (!grafanaOAuthClientId || !grafanaOAuthProviderDomain || !grafanaOAuthRealm) {
+      throw new Error(`Grafana OAuth is not configured for ${props.configuration.branchName}`);
+    }
+    const oauthClientSecret = Secret.fromSecretNameV2(this, 'GrafanaOAuthClientSecret', Statics.secretGrafanaOAuthClientSecret);
+    const hostedZone = this.importHostedzone();
+    const grafanaUrl = `https://grafana.${hostedZone.zoneName}`;
 
     const grafanaSg = new ec2.SecurityGroup(this, 'GrafanaSecurityGroup', {
       vpc: props.vpc,
@@ -91,11 +103,18 @@ export class GrafanaStack extends Stack {
     const renderGrafanaConfig = (contents: string) => contents
       .replace(/__AWS_REGION__/g, this.region)
       .replace(/__SNS_TOPIC_ARN__/g, alertTopicArn)
-      .replace(/__LOKI_URL__/g, lokiUrl);
+      .replace(/__LOKI_URL__/g, lokiUrl)
+      .replace(/__OAUTH_CLIENT_ID__/g, grafanaOAuthClientId)
+      .replace(/__OAUTH_PROVIDER_DOMAIN__/g, grafanaOAuthProviderDomain)
+      .replace(/__OAUTH_REALM__/g, grafanaOAuthRealm);
     const dashboard = renderGrafanaConfig(
       fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards/mule-runtime-logs.json'), 'utf8'),
     );
     const provisioningFiles = new Map<string, string>([
+      [
+        '/var/lib/grafana/conf/grafana.ini',
+        renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'conf/grafana.ini'), 'utf8')),
+      ],
       [
         '/var/lib/grafana/provisioning/dashboards/mule.yaml',
         fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/dashboards/mule.yaml'), 'utf8'),
@@ -124,7 +143,7 @@ export class GrafanaStack extends Stack {
         `mkdir -p '${path.posix.dirname(filePath)}'`,
         `echo '${Buffer.from(contents).toString('base64')}' | base64 -d > '${filePath}'`,
       ]),
-      'exec /run.sh grafana server --homepath=/usr/share/grafana --config=/etc/grafana/grafana.ini cfg:default.log.mode=console',
+      'exec /run.sh grafana server --homepath=/usr/share/grafana --config=/var/lib/grafana/conf/grafana.ini cfg:default.log.mode=console',
     ].join('\n');
     const container = taskDefinition.addContainer('GrafanaContainer', {
       image: ecs.ContainerImage.fromRegistry(Statics.grafanaDockerImage),
@@ -138,11 +157,13 @@ export class GrafanaStack extends Stack {
       environment: {
         GF_PATHS_PROVISIONING: '/var/lib/grafana/provisioning',
         GF_SECURITY_ADMIN_USER: 'admin',
-        GF_SERVER_ROOT_URL: `http://${loadBalancer.loadBalancerDnsName}`,
+        // OAuth builds its redirect URI from the root URL.
+        GF_SERVER_ROOT_URL: grafanaUrl,
         GF_USERS_ALLOW_SIGN_UP: 'false',
       },
       secrets: {
         GF_SECURITY_ADMIN_PASSWORD: ecs.Secret.fromSecretsManager(adminPassword),
+        GF_OAUTH_CLIENT_SECRET: ecs.Secret.fromSecretsManager(oauthClientSecret),
       },
       healthCheck: {
         command: ['CMD-SHELL', 'wget -q -O - http://localhost:3000/api/health || exit 1'],
@@ -165,21 +186,6 @@ export class GrafanaStack extends Stack {
       healthCheckGracePeriod: Duration.seconds(120),
       enableExecuteCommand: true,
     });
-    const httpListener = loadBalancer.addListener('GrafanaHttpListener', {
-      port: 80,
-      protocol: ApplicationProtocol.HTTP,
-    });
-    httpListener.addTargets('GrafanaTarget', {
-      protocol: ApplicationProtocol.HTTP,
-      targets: [service.loadBalancerTarget({
-        containerName: 'GrafanaContainer',
-        containerPort: 3000,
-      })],
-      healthCheck: {
-        path: '/api/health',
-        healthyHttpCodes: '200',
-      },
-    });
     new CfnOutput(this, 'GrafanaUrl', {
       value: `http://${loadBalancer.loadBalancerDnsName}`,
     });
@@ -188,6 +194,40 @@ export class GrafanaStack extends Stack {
     });
     new CfnOutput(this, 'GrafanaAlertTopicArn', {
       value: alertTopic.topicArn,
+    });
+
+    const certificate = new Certificate(this, 'GrafanaCertificate', {
+      domainName: `grafana.${hostedZone.zoneName}`,
+      validation: CertificateValidation.fromDns(hostedZone),
+    });
+
+    const listener = loadBalancer.addListener('HTTPListener', {
+      port: 443,
+      certificates: [certificate],
+    });
+
+    new ARecord(
+      this,
+      'a-record',
+      {
+        zone: hostedZone,
+        target: RecordTarget.fromAlias(new LoadBalancerTarget(loadBalancer)),
+        recordName: 'grafana',
+      },
+    );
+
+    const loadBalancerTargets = [service.loadBalancerTarget({
+      containerName: 'GrafanaContainer',
+      containerPort: 3000,
+    })];
+
+    listener.addTargets('Target', {
+      protocol: ApplicationProtocol.HTTP,
+      targets: loadBalancerTargets,
+      healthCheck: {
+        path: '/api/health',
+        healthyHttpCodes: '200',
+      },
     });
   }
 
@@ -321,4 +361,18 @@ export class GrafanaStack extends Stack {
 
     return `http://loki.${namespace.namespaceName}:3100`;
   }
+
+  private importHostedzone() {
+    return HostedZone.fromHostedZoneAttributes(this, 'hostedzone', {
+      hostedZoneId: StringParameter.valueForStringParameter(
+        this,
+        Statics.accountHostedzoneId,
+      ),
+      zoneName: StringParameter.valueForStringParameter(
+        this,
+        Statics.accountHostedzoneName,
+      ),
+    });
+  }
 }
+

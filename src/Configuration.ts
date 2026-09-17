@@ -82,6 +82,21 @@ export interface Configuration {
   grafanaEnabled: boolean;
 
   /**
+   * Keycloak OAuth client ID for Grafana login. Required when grafanaEnabled.
+   */
+  grafanaOAuthClientId?: string;
+
+  /**
+   * Keycloak domain for Grafana login, e.g. auth.example.com. Required when grafanaEnabled.
+   */
+  grafanaOAuthProviderDomain?: string;
+
+  /**
+   * Keycloak realm for Grafana login. Required when grafanaEnabled.
+   */
+  grafanaOAuthRealm?: string;
+
+  /**
    * Host instance type for the Amazon MQ broker.
    *
    * mq.t3.micro is burstable and documented by AWS as dev/test only.
@@ -103,6 +118,9 @@ const configurations: Configuration[] = [
     memoryLimitMiB: 16384,
     proxyEnabled: true,
     grafanaEnabled: true,
+    grafanaOAuthClientId: 'grafana',
+    grafanaOAuthProviderDomain: 'https://keycloak.mijn-services-dev.csp-nijmegen.nl/',
+    grafanaOAuthRealm: 'grafana-mule-dev',
     mqHostInstanceType: 'mq.t3.micro',
     cnames: {
       '_D1D3DA83D42898AF7DCC082754D0677D.data': '2DFCA4BBF3A2E3E9309B552F57876D8C.9633141E74B7095EB9444AD755627AFF.sectigo.com', //cert for on-prem layer7 auth (dev)

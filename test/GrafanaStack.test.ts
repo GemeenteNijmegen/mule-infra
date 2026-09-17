@@ -18,6 +18,9 @@ describe('GrafanaStack', () => {
       maxHealthyPercent: 100,
       proxyEnabled: true,
       mqHostInstanceType: 'mq.t3.micro',
+      grafanaOAuthClientId: 'grafana-test',
+      grafanaOAuthProviderDomain: 'auth.example.com',
+      grafanaOAuthRealm: 'mule',
     } as unknown as Configuration,
   };
 
@@ -99,6 +102,32 @@ describe('GrafanaStack', () => {
     // The mail builds the link from Grafana's own base URL plus the annotation.
     expect(contactPoint).toContain('{{ $grafana }}{{ index .Annotations "dashboard_path" }}');
     expect(rule).toContain('- applicationName');
+  });
+
+  test('configures Keycloak OAuth with the client secret from Secrets Manager', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const template = Template.fromStack(grafanaStack);
+    const ini = provisionedFile(template, '/var/lib/grafana/conf/grafana.ini');
+
+    expect(ini).toContain('client_id = grafana-test');
+    expect(ini).toContain('token_url = https://auth.example.com/realms/mule/protocol/openid-connect/token');
+    // The secret is expanded by Grafana at start-up, never baked into the blob.
+    expect(ini).toContain('client_secret = $__env{GF_OAUTH_CLIENT_SECRET}');
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Command: Match.arrayWith([Match.stringLikeRegexp('--config=/var/lib/grafana/conf/grafana.ini')]),
+          Secrets: Match.arrayWith([Match.objectLike({ Name: 'GF_OAUTH_CLIENT_SECRET' })]),
+        }),
+      ]),
+    });
   });
 
   test('deploys Loki and provisions it as the default Grafana datasource', () => {
