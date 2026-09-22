@@ -323,8 +323,10 @@ export class MuleRuntimeStack extends Stack {
           SERVER_NAME: `mule-${props.configuration.branchName.toLowerCase()}-${i}`,
           MULE_TRUSTSTORE: trustStore.secretArn,
           MULE_KEYSTORE: keyStore.secretArn,
-          // Set heap size as a percentage of container memory, and configure metaspace
-          MULE_JVM_ARGS: '-M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m',
+          // Set heap size as a percentage of container memory, and configure metaspace.
+          // ActiveProcessorCount pins the cores reported to Anypoint (licensing) to the task's vCPUs;
+          // Fargate can expose more cores than the task is allowed to use.
+          MULE_JVM_ARGS: `-M-XX:ActiveProcessorCount=${props.configuration.cpu / 1024} -M-XX:InitialRAMPercentage=60.0 -M-XX:MaxRAMPercentage=60.0 -M-XX:MaxMetaspaceSize=3072m -M-XX:MetaspaceSize=1024m`,
           // Ready-to-use ActiveMQ broker URL for the Mule JMS connector (used verbatim as
           // <jms:factory-configuration brokerUrl="${ACTIVEMQ_BROKER_URL}" />).
           // Amazon MQ only exposes TLS OpenWire endpoints (ssl://...:61617) - there is no plaintext
