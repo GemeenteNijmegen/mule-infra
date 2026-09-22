@@ -119,7 +119,7 @@ const configurations: Configuration[] = [
     proxyEnabled: true,
     grafanaEnabled: true,
     grafanaOAuthClientId: 'grafana',
-    grafanaOAuthProviderDomain: 'https://keycloak.mijn-services-dev.csp-nijmegen.nl/',
+    grafanaOAuthProviderDomain: 'keycloak.mijn-services-dev.csp-nijmegen.nl',
     grafanaOAuthRealm: 'grafana-mule-dev',
     mqHostInstanceType: 'mq.t3.micro',
     cnames: {

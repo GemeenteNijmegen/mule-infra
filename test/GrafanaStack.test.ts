@@ -123,7 +123,7 @@ describe('GrafanaStack', () => {
     template.hasResourceProperties('AWS::ECS::TaskDefinition', {
       ContainerDefinitions: Match.arrayWith([
         Match.objectLike({
-          Command: Match.arrayWith([Match.stringLikeRegexp('--config=/var/lib/grafana/conf/grafana.ini')]),
+          Environment: Match.arrayWith([{ Name: 'GF_PATHS_CONFIG', Value: '/var/lib/grafana/conf/grafana.ini' }]),
           Secrets: Match.arrayWith([Match.objectLike({ Name: 'GF_OAUTH_CLIENT_SECRET' })]),
         }),
       ]),

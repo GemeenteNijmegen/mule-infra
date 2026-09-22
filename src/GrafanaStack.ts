@@ -143,7 +143,7 @@ export class GrafanaStack extends Stack {
         `mkdir -p '${path.posix.dirname(filePath)}'`,
         `echo '${Buffer.from(contents).toString('base64')}' | base64 -d > '${filePath}'`,
       ]),
-      'exec /run.sh grafana server --homepath=/usr/share/grafana --config=/var/lib/grafana/conf/grafana.ini cfg:default.log.mode=console',
+      'exec /run.sh',
     ].join('\n');
     const container = taskDefinition.addContainer('GrafanaContainer', {
       image: ecs.ContainerImage.fromRegistry(Statics.grafanaDockerImage),
@@ -155,6 +155,8 @@ export class GrafanaStack extends Stack {
         logGroup,
       }),
       environment: {
+        // run.sh passes this as --config; arguments appended to run.sh can't override it.
+        GF_PATHS_CONFIG: '/var/lib/grafana/conf/grafana.ini',
         GF_PATHS_PROVISIONING: '/var/lib/grafana/provisioning',
         GF_SECURITY_ADMIN_USER: 'admin',
         // OAuth builds its redirect URI from the root URL.
