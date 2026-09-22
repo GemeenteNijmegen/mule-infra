@@ -67,6 +67,7 @@ export class Statics {
   static readonly grafanaDockerImage = 'grafana/grafana:13.1.3';
   static readonly lokiDockerImage = 'grafana/loki:3.5.3';
   static readonly alloyDockerImage = 'grafana/alloy:v1.19.2';
+  static readonly secretGrafanaOAuthClientSecret = `/${Statics.projectName}/grafana/oauth-clientsecret`;
 
   // MARK: proxy task (on-demand tinyproxy)
   static readonly proxyContainerPort = 8888;

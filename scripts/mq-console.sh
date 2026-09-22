@@ -16,9 +16,10 @@
 #   --region   eu-central-1
 #   --port     8888  (same as the container port)
 #
-# Once running, set your browser's HTTP/HTTPS proxy to http://localhost:<local-port>
-# and open the console URL printed below. Press Ctrl+C to stop the tunnel; the
-# script also stops the ECS task automatically.
+# Once the tunnel is up, the script launches an isolated browser window (temporary
+# Firefox profile, or Chrome if Firefox is absent) preconfigured to use the proxy,
+# so your regular browser is untouched. Press Ctrl+C or close that browser to stop
+# the tunnel; the script also stops the ECS task automatically.
 
 set -euo pipefail
 
@@ -93,11 +94,18 @@ TASK_ID="${TASK_ARN##*/}"
 # -- Ensure the tunnel and task are cleaned up on exit ---------------------- --
 SSM_PID=""
 SSM_LOG="${TMPDIR:-/tmp}/mq-console-ssm.$$.log"
+BROWSER_PID=""
+BROWSER_PROFILE=""
 CLEANED=0
 cleanup() {
   [[ "$CLEANED" == "1" ]] && return 0
   CLEANED=1
   echo ""
+  if [[ -n "$BROWSER_PID" ]]; then
+    pkill -P "$BROWSER_PID" >/dev/null 2>&1 || true
+    kill "$BROWSER_PID" >/dev/null 2>&1 || true
+  fi
+  [[ -n "$BROWSER_PROFILE" ]] && rm -rf "$BROWSER_PROFILE"
   if [[ -n "$SSM_PID" ]]; then
     pkill -P "$SSM_PID" >/dev/null 2>&1 || true
     kill "$SSM_PID" >/dev/null 2>&1 || true
@@ -188,8 +196,44 @@ fi
 echo ""
 echo "  All console URLs: ${CONSOLE_URLS//,/    }"
 echo ""
-echo "  1. Set your browser HTTP/HTTPS proxy to:  ${PROXY}"
-echo "  2. Open the console URL above (the broker cert is valid - no warning)."
+
+# -- Launch an isolated browser that uses the proxy ------------------------ ----
+# A throwaway profile keeps the proxy out of your everyday browser.
+OPEN_URL="${ACTIVE_URL:-${URL_LIST[0]}}/admin/"
+BROWSER_PROFILE=$(mktemp -d "${TMPDIR:-/tmp}/mq-console-browser.XXXXXX")
+
+FIREFOX_BIN="/Applications/Firefox.app/Contents/MacOS/firefox"
+[[ -x "$FIREFOX_BIN" ]] || FIREFOX_BIN=$(command -v firefox || true)
+CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+[[ -x "$CHROME_BIN" ]] || CHROME_BIN=$(command -v google-chrome || command -v chromium || true)
+
+if [[ -n "$FIREFOX_BIN" ]]; then
+  cat > "${BROWSER_PROFILE}/user.js" <<EOF
+user_pref("network.proxy.type", 1);
+user_pref("network.proxy.http", "localhost");
+user_pref("network.proxy.http_port", ${LOCAL_PORT});
+user_pref("network.proxy.ssl", "localhost");
+user_pref("network.proxy.ssl_port", ${LOCAL_PORT});
+user_pref("network.proxy.no_proxies_on", "");
+user_pref("browser.shell.checkDefaultBrowser", false);
+user_pref("browser.aboutwelcome.enabled", false);
+user_pref("browser.startup.homepage_override.mstone", "ignore");
+user_pref("datareporting.policy.dataSubmissionEnabled", false);
+user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);
+EOF
+  "$FIREFOX_BIN" -profile "$BROWSER_PROFILE" -no-remote -new-instance "$OPEN_URL" >/dev/null 2>&1 &
+  BROWSER_PID=$!
+  echo "  Opened Firefox (isolated profile, proxy ${PROXY})."
+elif [[ -n "$CHROME_BIN" ]]; then
+  "$CHROME_BIN" --user-data-dir="$BROWSER_PROFILE" --proxy-server="$PROXY" \
+    --no-first-run --no-default-browser-check "$OPEN_URL" >/dev/null 2>&1 &
+  BROWSER_PID=$!
+  echo "  Opened Chrome (isolated profile, proxy ${PROXY})."
+else
+  echo "  No Firefox or Chrome found. Set your browser HTTP/HTTPS proxy to"
+  echo "  ${PROXY} and open ${OPEN_URL}"
+fi
+
 echo ""
 echo "  Login:"
 echo "    username: admin"
@@ -198,8 +242,15 @@ echo ""
 echo "  CLI check (proxy cert not verified by curl, hence -k):"
 echo "    curl -sk --proxy ${PROXY} -I ${ACTIVE_URL:-<console-url>}/admin/"
 echo ""
-echo "  Press Ctrl+C to stop the proxy and terminate the ECS task."
+echo "  Press Ctrl+C (or close the browser) to stop the proxy and terminate the ECS task."
 echo "================================================================"
 echo ""
 
-wait "$SSM_PID"
+# Stay up until the tunnel dies or the browser is closed (macOS bash lacks wait -n).
+while kill -0 "$SSM_PID" 2>/dev/null; do
+  if [[ -n "$BROWSER_PID" ]] && ! kill -0 "$BROWSER_PID" 2>/dev/null; then
+    echo "Browser closed."
+    break
+  fi
+  sleep 1
+done
