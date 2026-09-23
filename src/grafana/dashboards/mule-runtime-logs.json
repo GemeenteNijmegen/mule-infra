@@ -72,7 +72,7 @@
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "description": "ERROR-level lines per application. The 'Mule runtime errors' alert is based on this query.",
+      "description": "ERROR-level lines per application - the application that threw, not the one that received the request. See 'Errors by entrypoint application' below for the integration view the alert uses.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -106,6 +106,51 @@
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Errors over the dashboard's time range, attributed to the application that logged the correlationId first - the entrypoint of the integration, not the application that threw. The 'Mule runtime errors' alert attributes errors the same way, but mails one alert per failing request.",
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "id": 7,
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [{ "displayName": "Error lines", "desc": true }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum by (applicationName) (sum by (correlationId) (count_over_time({job=\"mule\"} |= \"ERROR\" | json | priority=\"ERROR\" | correlationId!=\"\" [$__range])) + on (correlationId) group_left (applicationName) (0 * bottomk by (correlationId) (1, min by (correlationId, applicationName) (min_over_time({job=\"mule\"} | json | correlationId!=\"\" | label_format ts=`{{ __timestamp__ | unixEpoch }}` | unwrap ts [$__range])))))",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "count by (applicationName) (sum by (correlationId) (count_over_time({job=\"mule\"} |= \"ERROR\" | json | priority=\"ERROR\" | correlationId!=\"\" [$__range])) + on (correlationId) group_left (applicationName) (0 * bottomk by (correlationId) (1, min by (correlationId, applicationName) (min_over_time({job=\"mule\"} | json | correlationId!=\"\" | label_format ts=`{{ __timestamp__ | unixEpoch }}` | unwrap ts [$__range])))))",
+          "instant": true,
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "applicationName", "mode": "outer" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "Time 1": true, "Time 2": true },
+            "renameByName": {
+              "applicationName": "Entrypoint",
+              "Value #A": "Error lines",
+              "Value #B": "Failing requests"
+            }
+          }
+        }
+      ],
+      "title": "Errors by entrypoint application",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
       "description": "ERROR-level lines. Click a correlation ID to load that request in the 'Request trace' panel below.",
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto", "filterable": true } },
@@ -127,7 +172,7 @@
           }
         ]
       },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 8 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
       "id": 1,
       "options": { "showHeader": true, "cellHeight": "sm" },
       "targets": [
@@ -161,7 +206,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "description": "All application JSON log lines. Narrow with the Application and 'Line contains' variables.",
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 18 },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 26 },
       "id": 3,
       "options": {
         "dedupStrategy": "none",
@@ -206,7 +251,7 @@
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 38 },
       "id": 6,
       "options": {
         "showHeader": true,
@@ -237,7 +282,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "description": "Every log line for one correlation ID, oldest first. Empty until you click a correlation ID above or set the Correlation ID variable.",
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 38 },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 46 },
       "id": 4,
       "options": {
         "dedupStrategy": "none",
@@ -267,5 +312,5 @@
   "timezone": "browser",
   "title": "Mule Runtime Logs",
   "uid": "mule-runtime-logs",
-  "version": 4
+  "version": 5
 }

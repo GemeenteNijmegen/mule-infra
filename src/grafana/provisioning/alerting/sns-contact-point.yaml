@@ -11,9 +11,13 @@ contactPoints:
           topic_arn: "__SNS_TOPIC_ARN__"
           sigv4:
             region: "__AWS_REGION__"
-          # The rule groups by application, so the subject can name it. SNS
-          # subjects are capped at 100 characters and allow no newlines.
-          subject: "Mule errors: {{ if .CommonLabels.applicationName }}{{ .CommonLabels.applicationName }}{{ else }}runtime alert{{ end }} ({{ .Status }})"
+          # Three shapes of alert reach this contact point: a failing request
+          # (entrypoint application plus correlationId), a runtime error that
+          # belongs to no request (application only), and a Grafana-side
+          # evaluation failure (neither). SNS subjects are capped at 100
+          # characters and allow no newlines; a correlationId is a 36-character
+          # UUID, which leaves room for an application name.
+          subject: "Mule errors: {{ if .CommonLabels.correlationId }}{{ .CommonLabels.applicationName }} request {{ .CommonLabels.correlationId }}{{ else if .CommonLabels.applicationName }}{{ .CommonLabels.applicationName }} (no correlation ID){{ else }}runtime alert{{ end }} ({{ .Status }})"
           # .ExternalURL (GF_SERVER_ROOT_URL) is captured up here because the
           # per-alert scope inside the range cannot see it.
           message: |
@@ -24,9 +28,12 @@ contactPoints:
 
             Started: {{ .StartsAt }}
 
-            Debug in Grafana - opens the dashboard filtered to this application.
-            Click a correlation ID in "Errors by application" to load that
-            request's full trace:
+            {{ if index .Labels "correlationId" -}}
+            Debug in Grafana - opens the dashboard with this request's full
+            trace loaded, oldest line first, so the entrypoint is at the top:
+            {{ else -}}
+            Debug in Grafana - opens the dashboard filtered to this application:
+            {{ end -}}
             {{ $grafana }}{{ index .Annotations "dashboard_path" }}
 
             Explore query:
