@@ -22,7 +22,7 @@ contactPoints:
           # per-alert scope inside the range cannot see it.
           message: |
             {{ $grafana := .ExternalURL -}}
-            {{ range .Alerts.Firing -}}
+            {{ range .Alerts -}}
             {{ if index .Labels "applicationName" -}}
             {{ index .Annotations "description" }}
 
@@ -44,4 +44,8 @@ contactPoints:
             Loki is probably unreachable, so Mule errors are NOT being detected right now.
             Alert: {{ .GeneratorURL }}
             {{ end }}
+            {{ end -}}
+            {{ if not .Alerts -}}
+            Grafana sent an SNS notification without alert details.
+            Alert: {{ .ExternalURL }}
             {{ end -}}
