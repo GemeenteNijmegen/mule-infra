@@ -1,0 +1,265 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "templating": {
+    "list": [
+      {
+        "type": "adhoc",
+        "name": "Filters",
+        "label": "Filters",
+        "datasource": { "type": "loki", "uid": "loki" },
+        "filters": [{ "key": "service_name", "operator": "=", "value": "mule" }]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Aantal ERPx berichten per zender, PROEF-zendingen uitgesloten.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "hideFrom": { "legend": false, "tooltip": false, "viz": false } }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "displayLabels": ["value"],
+        "legend": {
+          "displayMode": "list",
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true,
+          "values": []
+        },
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "sort": "desc",
+        "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "sum by (zender) (\n  count_over_time(\n    {service_name=\"mule\"}\n    | json\n    | applicationName =~ \"planon-eapi|energiemissie-eapi|ltc-eapi|easyfunders-eapi|fis-nijm-eadap|power2pay-padap|fis-nijm-papi\"\n    | content_zender != \"\" and content_zender !~ \"(?i)PROEF\"\n    | label_format zender=content_zender\n    [$__range]\n  )\n)",
+          "legendFormat": "{{zender}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "ERPx berichten per zender (excl. PROEF)",
+      "type": "piechart"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Aantal correlation IDs met een ERROR, gegroepeerd per zender.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 1,
+            "scaleDistribution": { "type": "linear" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.97,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "overflow": "ellipsis",
+          "placement": "right",
+          "showLegend": true
+        },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": { "hideZeros": false, "mode": "single", "sort": "none" },
+        "xField": "zender",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "sum by(correlationId) (\n  count_over_time(\n    {service_name=\"mule\"} \n    | json \n    | applicationName =~ `planon-eapi|energiemissie-eapi|ltc-eapi|easyfunders-eapi|fis-nijm-eadap|power2pay-padap|fis-nijm-papi` \n    | priority = `ERROR` \n    [$__range]\n  )   \n)",
+          "legendFormat": "{{correlationId}}",
+          "queryType": "instant",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "sum by (zender, correlationId) (\n  count_over_time(\n    {service_name=\"mule\"}\n    | json\n    | applicationName =~ \"planon-eapi|energiemissie-eapi|ltc-eapi|easyfunders-eapi|fis-nijm-eadap|power2pay-padap|fis-nijm-papi\"\n    | content_zender != \"\" and content_zender !~ \"(?i)PROEF\"\n    | label_format zender=content_zender\n    [$__range]\n  )\n)",
+          "legendFormat": "{{zender}}",
+          "queryType": "instant",
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "byVariable": false,
+            "include": { "names": ["correlationId", "zender", "Value #B"] }
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": { "byField": "correlationId", "mode": "inner" }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "zender": { "aggregations": ["count"], "operation": "groupby" }
+            }
+          }
+        }
+      ],
+      "title": "ERPx fouten per zender (excl. PROEF)",
+      "type": "barchart"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Foutmeldingen per correlation ID, verrijkt met de zender van het bericht.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "footer": { "reducers": [] },
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "correlationId" },
+            "properties": [{ "id": "custom.width", "value": 343 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "zender" },
+            "properties": [{ "id": "custom.width", "value": 200 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "description" },
+            "properties": [{ "id": "custom.width", "value": 673 }]
+          }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "id": 4,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Time" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{service_name=\"mule\"} \n| json \n| priority = `ERROR` \n| (applicationName =~ `.*energiemissie-eapi.*|.*planon-eapi.*|.*ltc-eapi.*|.*easyfunders-eapi.*|.*fis-nijm-eadap.*|.*power2pay-padap.*`)\nor (applicationName =~ `.*fis-nijm-papi.*` and message =~ `bestandsnaam`) or (applicationName =~ `.*fis-nijm-papi.*` and content_description != \"\")\n| line_format `{\"correlationId\": \"{{.correlationId}}\", \"description\": \"{{.content_description}}\"}`",
+          "queryType": "range",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{service_name=\"mule\"}\n| json\n| applicationName =~ \"planon-eapi|energiemissie-eapi|ltc-eapi|easyfunders-eapi|fis-nijm-eadap|power2pay-padap|fis-nijm-papi\"\n| content_zender != \"\" and content_zender !~ \"(?i)PROEF\"\n| line_format `{\"correlationId\": \"{{.correlationId}}\", \"zender\": \"{{.content_zender}}\"}`",
+          "legendFormat": "{{zender}}",
+          "queryType": "range",
+          "refId": "B"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "byVariable": false,
+            "include": { "names": ["correlationId", "zender", "Line"] }
+          }
+        },
+        {
+          "id": "extractFields",
+          "options": { "delimiter": ",", "format": "json", "replace": true, "source": "Line" }
+        },
+        {
+          "id": "joinByField",
+          "options": { "byField": "correlationId", "mode": "inner" }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Line": { "aggregations": [], "operation": "groupby" },
+              "correlationId": { "aggregations": [], "operation": "groupby" },
+              "description": { "aggregations": ["allValues"], "operation": "aggregate" },
+              "zender": { "aggregations": ["uniqueValues"], "operation": "aggregate" }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "includeByName": {},
+            "indexByName": {
+              "correlationId": 0,
+              "zender (uniqueValues)": 1,
+              "description (allValues)": 2
+            },
+            "renameByName": {
+              "description (allValues)": "description",
+              "zender (uniqueValues)": "zender"
+            }
+          }
+        }
+      ],
+      "title": "ERPx foutenlijst (error detail table)",
+      "type": "table"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 41,
+  "tags": ["loki", "mule", "erpx"],
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "ERPx",
+  "uid": "erpx",
+  "version": 1
+}

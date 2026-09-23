@@ -107,9 +107,10 @@ export class GrafanaStack extends Stack {
       .replace(/__OAUTH_CLIENT_ID__/g, grafanaOAuthClientId)
       .replace(/__OAUTH_PROVIDER_DOMAIN__/g, grafanaOAuthProviderDomain)
       .replace(/__OAUTH_REALM__/g, grafanaOAuthRealm);
-    const dashboard = renderGrafanaConfig(
-      fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards/mule-runtime-logs.json'), 'utf8'),
-    );
+    const dashboards = ['mule-runtime-logs.json', 'erpx.json'].map((fileName): [string, string] => [
+      `/var/lib/grafana/dashboards/${fileName}`,
+      renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards', fileName), 'utf8')),
+    ]);
     const provisioningFiles = new Map<string, string>([
       [
         '/var/lib/grafana/conf/grafana.ini',
@@ -131,7 +132,7 @@ export class GrafanaStack extends Stack {
           fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/sns-contact-point.yaml'), 'utf8'),
         ),
       ],
-      ['/var/lib/grafana/dashboards/mule-runtime-logs.json', dashboard],
+      ...dashboards,
       [
         '/var/lib/grafana/provisioning/datasources/loki.yaml',
         renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/datasources/loki.yaml'), 'utf8')),
