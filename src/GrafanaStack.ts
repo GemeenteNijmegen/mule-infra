@@ -10,6 +10,7 @@ import {
   StackProps,
   aws_ec2 as ec2,
   aws_ecs as ecs,
+  aws_efs as efs,
   aws_iam as iam,
   aws_logs as logs,
   aws_s3 as s3,
@@ -97,6 +98,8 @@ export class GrafanaStack extends Stack {
     alertTopic.addSubscription(new subscriptions.EmailSubscription('e.kuijs@nijmegen.nl'));
     alertTopic.grantPublish(taskDefinition.taskRole);
 
+    const dataFileSystem = this.createDataVolume(props, taskDefinition);
+
     const lokiUrl = this.createLoki(props, grafanaSg);
 
     const grafanaConfigRoot = path.join(__dirname, 'grafana');
@@ -159,6 +162,9 @@ export class GrafanaStack extends Stack {
         // run.sh passes this as --config; arguments appended to run.sh can't override it.
         GF_PATHS_CONFIG: '/var/lib/grafana/conf/grafana.ini',
         GF_PATHS_PROVISIONING: '/var/lib/grafana/provisioning',
+        // The SQLite database lives on EFS; everything under
+        // /var/lib/grafana is rewritten from this repository at start-up.
+        GF_PATHS_DATA: '/grafana-data',
         GF_SECURITY_ADMIN_USER: 'admin',
         // OAuth builds its redirect URI from the root URL.
         GF_SERVER_ROOT_URL: grafanaUrl,
@@ -180,15 +186,29 @@ export class GrafanaStack extends Stack {
       containerPort: 3000,
       protocol: ecs.Protocol.TCP,
     });
+    container.addMountPoints({
+      containerPath: '/grafana-data',
+      readOnly: false,
+      sourceVolume: 'grafana-efs-volume',
+    });
     const service = new ecs.FargateService(this, 'GrafanaService', {
       cluster: props.cluster,
       taskDefinition,
       desiredCount: 1,
+      // SQLite on EFS tolerates one writer. A rolling update would briefly run
+      // two tasks against the same database file, and both would evaluate the
+      // alert rules and mail the same errors, so the old task is stopped before
+      // the new one starts. The 10m query window in the alert rules covers the
+      // resulting gap.
+      minHealthyPercent: 0,
+      maxHealthyPercent: 100,
+      availabilityZoneRebalancing: ecs.AvailabilityZoneRebalancing.DISABLED,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [grafanaSg],
       healthCheckGracePeriod: Duration.seconds(120),
       enableExecuteCommand: true,
     });
+    dataFileSystem.connections.allowDefaultPortFrom(service.connections);
     new CfnOutput(this, 'GrafanaUrl', {
       value: `http://${loadBalancer.loadBalancerDnsName}`,
     });
@@ -232,6 +252,65 @@ export class GrafanaStack extends Stack {
         healthyHttpCodes: '200',
       },
     });
+  }
+
+  /**
+   * EFS volume for Grafana's SQLite database, mounted at /grafana-data.
+   *
+   * Without it the database is lost with the task, taking the alert silences,
+   * the notification log that suppresses repeat mails, and any dashboard built
+   * in the UI with it. Only the database lives here - the configuration,
+   * dashboards and alert rules under /var/lib/grafana are rewritten from this
+   * repository on every start, so they stay owned by the IaC.
+   *
+   * Returns the file system so the service can be allowed to reach it.
+   */
+  private createDataVolume(props: GrafanaStackProps, taskDefinition: ecs.FargateTaskDefinition): efs.FileSystem {
+    const fileSystem = new efs.FileSystem(this, 'GrafanaEfs', {
+      vpc: props.vpc,
+      encrypted: true,
+      lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
+      performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
+      outOfInfrequentAccessPolicy: efs.OutOfInfrequentAccessPolicy.AFTER_1_ACCESS,
+    });
+    // 472 is the grafana user in the image; the container runs as it.
+    const accessPoint = new efs.AccessPoint(this, 'GrafanaEfsAccessPoint', {
+      fileSystem,
+      path: '/grafana-data',
+      createAcl: {
+        ownerUid: '472',
+        ownerGid: '472',
+        permissions: '755',
+      },
+      posixUser: {
+        uid: '472',
+        gid: '472',
+      },
+    });
+    taskDefinition.addVolume({
+      name: 'grafana-efs-volume',
+      efsVolumeConfiguration: {
+        fileSystemId: fileSystem.fileSystemId,
+        transitEncryption: 'ENABLED',
+        authorizationConfig: {
+          accessPointId: accessPoint.accessPointId,
+          iam: 'ENABLED',
+        },
+      },
+    });
+    taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: [
+        'elasticfilesystem:ClientMount',
+        'elasticfilesystem:ClientWrite',
+      ],
+      resources: [fileSystem.fileSystemArn],
+      conditions: {
+        StringEquals: {
+          'elasticfilesystem:AccessPointArn': accessPoint.accessPointArn,
+        },
+      },
+    }));
+    return fileSystem;
   }
 
   /**

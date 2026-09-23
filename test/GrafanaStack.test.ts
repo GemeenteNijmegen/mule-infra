@@ -171,6 +171,38 @@ describe('GrafanaStack', () => {
     expect(commandText).not.toContain('/var/lib/grafana/provisioning/datasources/cloudwatch.yaml');
   });
 
+  test('keeps the Grafana database on EFS and replaces the task without overlap', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const template = Template.fromStack(grafanaStack);
+
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Image: Match.stringLikeRegexp('grafana/grafana'),
+          Environment: Match.arrayWith([
+            Match.objectLike({ Name: 'GF_PATHS_DATA', Value: '/grafana-data' }),
+          ]),
+          MountPoints: [Match.objectLike({ ContainerPath: '/grafana-data' })],
+        }),
+      ]),
+    });
+
+    // Two tasks writing the same SQLite file would double-mail every alert.
+    template.hasResourceProperties('AWS::ECS::Service', {
+      DeploymentConfiguration: Match.objectLike({
+        MinimumHealthyPercent: 0,
+        MaximumPercent: 100,
+      }),
+    });
+  });
+
   test('runs an Alloy sidecar that reads only the Mule application log group', () => {
     const app = new App();
     const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
