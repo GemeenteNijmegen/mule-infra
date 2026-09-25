@@ -41,7 +41,7 @@ export class MuleRuntimeStack extends Stack {
 
     const hostedZone = this.importHostedzone();
     const certificate = new Certificate(this, 'certificate', {
-      domainName: '*.' + hostedZone.zoneName,
+      domainName: `data.${hostedZone.zoneName}`,
       validation: CertificateValidation.fromDns(hostedZone),
     });
     this.addCnameRecords(hostedZone, this.props.configuration.cnames);
