@@ -112,7 +112,7 @@ so that split is enforced by IAM and not just by configuration.
 
 ```mermaid
 flowchart LR
-    U["Browser"] --> ALB["Public ALB :80"]
+    U["Browser"] --> ALB["Public ALB :443<br/>grafana.&lt;hosted zone&gt;"]
 
     subgraph muleTask["Mule runtime ECS tasks"]
         MR["Mule runtime container"]
@@ -136,13 +136,14 @@ flowchart LR
     end
 
     ALB --> GR
+    GR <--> EFS[("EFS<br/>Grafana SQLite")]
     GR -- "LogQL<br/>loki.mule-obs.local:3100" --> LK
-    GR -- "ERROR alert rule" --> SNS["SNS topic"] --> MAIL["Email subscription"]
+    GR -- "ERROR alert rules<br/>per correlationId / per app" --> SNS["SNS topic"] --> MAIL["Email subscription"]
 ```
 
 Everything is defined in [`src/GrafanaStack.ts`](src/GrafanaStack.ts); the Alloy
 pipeline lives in [`src/grafana/loki/config.alloy`](src/grafana/loki/config.alloy)
-and the dashboard, datasource and alert rule under
+and the dashboards, datasource and alert rules under
 [`src/grafana/`](src/grafana/).
 
 ## VPC Proxy (Tinyproxy)
