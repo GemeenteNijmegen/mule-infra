@@ -4,8 +4,8 @@ groups:
   - orgId: 1
     name: mule-runtime-errors
     folder: Mule
-    # Evaluate every 5m against Loki. refId A counts ERROR-level lines per Mule
-    # application over a 10m window (from: 600) - two 5m evaluation cycles of
+    # Evaluate every 5m against Loki. refId A counts ERROR-level lines per
+    # correlationId over a 10m window (from: 600) - two 5m evaluation cycles of
     # overlap to absorb log-ingestion lag.
     interval: 5m
     rules:
@@ -23,9 +23,41 @@ groups:
                 type: loki
                 uid: loki
               # Loki holds application logs only, so no runtime chatter to drop.
+              #
+              # One integration spans several applications, tied together by the
+              # correlationId, so a failing request - not a failing application -
+              # is the unit that gets alerted on. The application named is the
+              # entrypoint of the chain: the one that logged the correlationId
+              # first. LogQL has no argmin, so the entrypoint is derived by
+              # turning each line's timestamp into a label, taking the earliest
+              # per application, and keeping the single lowest per correlationId.
+              # The 0 * makes that second query contribute only its label.
+              #
+              # Windows are deliberately asymmetric: errors come from the same
+              # 10m window as the rest of the rule, while the entrypoint is
+              # looked up over 1h. The join always matches (a failing request has
+              # at least its own error line in the window), so a narrow lookup
+              # loses no alerts - it silently names a downstream application when
+              # the real entrypoint logged before the window opened. Literal
+              # durations, not $__range, because the two differ.
+              #
+              # Lines without a correlationId cannot be tied to a request and are
+              # skipped; they are startup and shutdown failures.
               expr: |
-                sum by (applicationName) (
-                  count_over_time({job="mule"} | json | priority="ERROR" [$__range])
+                sum by (correlationId, applicationName) (
+                  sum by (correlationId) (
+                    count_over_time({job="mule"} |= "ERROR" | json | priority="ERROR" | correlationId!="" [10m])
+                  )
+                  + on (correlationId) group_left (applicationName)
+                  (0 * bottomk by (correlationId) (1,
+                    min by (correlationId, applicationName) (
+                      min_over_time(
+                        {job="mule"} | json | correlationId!=""
+                        | label_format ts=`{{ __timestamp__ | unixEpoch }}`
+                        | unwrap ts [1h]
+                      )
+                    )
+                  ))
                 )
               intervalMs: 1000
               maxDataPoints: 43200
@@ -99,19 +131,131 @@ groups:
           __dashboardUid__: mule-runtime-logs
           # Errors over time; annotations render on a time series, not a table.
           __panelId__: "2"
-          summary: "Mule runtime errors for {{ $labels.applicationName }}"
-          description: "{{ $labels.applicationName }} logged {{ $values.B.Value }} errors in the evaluation window."
-          # Appended to Grafana's external URL by the contact point: this app's
-          # dashboard, where the errors table links each correlationId to its
-          # trace. Relative window - templates cannot do time arithmetic.
-          dashboard_path: "/d/mule-runtime-logs/mule-runtime-logs?var-applicationName={{ $labels.applicationName }}&var-correlationId=&var-search=&from=now-3h&to=now"
-          logs_query: '{job="mule"} | json | applicationName="{{ $labels.applicationName }}" | priority="ERROR"'
+          summary: "Mule runtime errors for request {{ $labels.correlationId }} via {{ $labels.applicationName }}"
+          description: "Request {{ $labels.correlationId }}, entered through {{ $labels.applicationName }}, logged {{ $values.B.Value }} errors in the evaluation window. The errors may come from any application in the chain."
+          # Appended to Grafana's external URL by the contact point: the
+          # dashboard with this request's trace loaded, showing every
+          # application it passed through. Relative window - templates cannot do
+          # time arithmetic.
+          dashboard_path: "/d/mule-runtime-logs/mule-runtime-logs?var-applicationName=.%2B&var-correlationId={{ $labels.correlationId }}&var-search=&from=now-3h&to=now"
+          logs_query: '{job="mule"} | json | correlationId="{{ $labels.correlationId }}"'
         labels:
           severity: critical
         notification_settings:
           receiver: mule-runtime-errors-sns
-          # One mail per application, each with its own subject and link.
+          # One mail per failing request, each with its own subject and link.
           # Grafana rejects a group_by without grafana_folder and alertname.
+          group_by:
+            - grafana_folder
+            - alertname
+            - correlationId
+        isPaused: false
+      # Fallback for the errors the rule above cannot see. Lines without a
+      # correlationId belong to no request - they are startup, shutdown and
+      # other runtime-level failures - so the application is the only unit left
+      # to group them by.
+      - uid: mule-runtime-errors-no-correlation
+        title: Mule runtime errors without correlation ID
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              datasource:
+                type: loki
+                uid: loki
+              # correlationId="" matches an empty field and a missing one alike,
+              # which is exactly the set the correlationId!="" rule skips. A line
+              # that is not JSON at all matches neither rule: it has no priority
+              # label to filter on. Loki holds only the applications' JSON logs,
+              # so that should not occur.
+              expr: |
+                sum by (applicationName) (
+                  count_over_time({job="mule"} |= "ERROR" | json | priority="ERROR" | correlationId="" [10m])
+                )
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+              queryType: instant
+          - refId: B
+            queryType: expression
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: []
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: expression
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        # OK, not Error: an unqueryable Loki fails both rules in this group, and
+        # the rule above already mails that. This one would only duplicate it.
+        execErrState: OK
+        for: 0s
+        annotations:
+          __dashboardUid__: mule-runtime-logs
+          # Errors over time by application - these have no request to trace.
+          __panelId__: "2"
+          summary: "Mule runtime errors without correlation ID in {{ $labels.applicationName }}"
+          description: "{{ $labels.applicationName }} logged {{ $values.B.Value }} errors that carry no correlationId, so they belong to no request. Startup and shutdown failures look like this."
+          dashboard_path: "/d/mule-runtime-logs/mule-runtime-logs?var-applicationName={{ $labels.applicationName }}&var-correlationId=&var-search=&from=now-3h&to=now"
+          logs_query: '{job="mule"} | json | applicationName="{{ $labels.applicationName }}" | priority="ERROR" | correlationId=""'
+        labels:
+          severity: critical
+        notification_settings:
+          receiver: mule-runtime-errors-sns
+          # One mail per application. Grafana rejects a group_by without
+          # grafana_folder and alertname.
           group_by:
             - grafana_folder
             - alertname
