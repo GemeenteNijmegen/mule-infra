@@ -95,7 +95,7 @@ export class GrafanaStack extends Stack {
       topicName: alertTopicName,
       displayName: `Mule Grafana alerts ${props.configuration.branchName}`,
     });
-    alertTopic.addSubscription(new subscriptions.EmailSubscription('e.kuijs@nijmegen.nl'));
+    Statics.grafanaDevopsEmails.forEach((email) => alertTopic.addSubscription(new subscriptions.EmailSubscription(email)));
     alertTopic.grantPublish(taskDefinition.taskRole);
 
     const dataFileSystem = this.createDataVolume(props, taskDefinition);

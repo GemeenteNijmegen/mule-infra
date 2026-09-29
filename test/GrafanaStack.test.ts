@@ -104,8 +104,25 @@ describe('GrafanaStack', () => {
     // SNS rejects the publish when a test or resolved notification renders no body.
     expect(contactPoint).toContain('{{ range .Alerts -}}');
     expect(contactPoint).toContain('Grafana heeft een SNS-notificatie zonder alertdetails verstuurd.');
-    // One alert instance, and so one mail, per failing request.
-    expect(rule).toContain('- correlationId');
+  });
+
+  test('the rules leave routing to the notification policy tree', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const rule = provisionedFile(
+      Template.fromStack(grafanaStack),
+      '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml',
+    );
+
+    // A contact point on the rule would bypass the tree, and with it the
+    // functional administrators' policies managed in Grafana.
+    expect(rule).not.toContain('notification_settings');
   });
 
   test('a fallback rule covers the errors that carry no correlation ID', () => {

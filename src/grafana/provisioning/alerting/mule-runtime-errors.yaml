@@ -143,14 +143,6 @@ groups:
           logs_query: '{job="mule"} | json | correlationId="{{ $labels.correlationId }}"'
         labels:
           severity: critical
-        notification_settings:
-          receiver: mule-runtime-errors-sns
-          # One mail per failing request, each with its own subject and link.
-          # Grafana rejects a group_by without grafana_folder and alertname.
-          group_by:
-            - grafana_folder
-            - alertname
-            - correlationId
         isPaused: false
       # Fallback for the errors the rule above cannot see. Lines without a
       # correlationId belong to no request - they are startup, shutdown and
@@ -254,12 +246,4 @@ groups:
           logs_query: '{job="mule"} | json | applicationName="{{ $labels.applicationName }}" | priority="ERROR" | correlationId=""'
         labels:
           severity: critical
-        notification_settings:
-          receiver: mule-runtime-errors-sns
-          # One mail per application. Grafana rejects a group_by without
-          # grafana_folder and alertname.
-          group_by:
-            - grafana_folder
-            - alertname
-            - applicationName
         isPaused: false

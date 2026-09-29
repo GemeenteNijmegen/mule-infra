@@ -146,6 +146,39 @@ pipeline lives in [`src/grafana/loki/config.alloy`](src/grafana/loki/config.allo
 and the dashboards, datasource and alert rules under
 [`src/grafana/`](src/grafana/).
 
+### Alert routing and functional administrators
+
+The alert rules pick no contact point: every alert goes through Grafana's
+notification policy tree. That tree, the functional administrators' contact
+points, and all users, roles, teams and folder permissions live in Grafana's
+database on EFS and are managed in the UI. Adding someone needs no deploy and
+puts no personal data in this repository. Only the DevOps contact point
+`mule-runtime-errors-sns` comes from here; it mails `Statics.grafanaDevopsEmails`.
+
+Set the tree up once, and again for a fresh database, **before** the rules use
+it. Until then alerts go to Grafana's default contact point, which mails nobody.
+In *Alerting > Notification policies*:
+
+1. **Default policy**: contact point `mule-runtime-errors-sns`, group by
+   `grafana_folder`, `alertname`, `correlationId` and `applicationName`. That
+   keeps one mail per failing request, and one per application for errors
+   without a correlationId.
+2. **First child policy**: matcher `alertname =~ .+`, contact point
+   `mule-runtime-errors-sns`, *Continue matching* on. Keep it first, so DevOps
+   gets every alert, also the ones a functional administrator gets.
+
+To add a functional administrator:
+
+1. They log in once with SSO and arrive as Viewer. Roles are managed in
+   Grafana, not synced from Keycloak.
+2. Create a contact point with the address they log in with. Email contact
+   points need SMTP settings in `grafana.ini`, which are not configured yet.
+3. Add a child policy below the DevOps one: matcher
+   `applicationName =~ app-a|app-b` for their applications, their contact
+   point, *Continue matching* on. `applicationName` is the entrypoint of the
+   failing request, or the application itself for errors without a
+   correlationId.
+
 ## VPC Proxy (Tinyproxy)
 
 An on-demand tinyproxy ECS task definition is deployed in `development` and `acceptance` environments to forward local laptop traffic to VPC / internal resources via AWS SSM port-forwarding.
