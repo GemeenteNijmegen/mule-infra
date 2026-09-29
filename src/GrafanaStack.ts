@@ -329,7 +329,8 @@ export class GrafanaStack extends Stack {
       enforceSSL: true,
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
-      lifecycleRules: [{ expiration: Duration.days(21) }],
+      // Keep in sync with max_query_lookback in loki-config.yaml.
+      lifecycleRules: [{ expiration: Duration.days(30) }],
     });
 
     const securityGroup = new ec2.SecurityGroup(this, 'LokiSecurityGroup', {

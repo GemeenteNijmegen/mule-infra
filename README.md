@@ -129,7 +129,7 @@ flowchart LR
     end
 
     CWA -- "FilterLogEvents<br/>poll 1m" --> AL
-    LK <--> S3[("S3 chunks + index<br/>21 day expiry")]
+    LK <--> S3[("S3 chunks + index<br/>30 day expiry")]
 
     subgraph grafanaTask["Grafana ECS task"]
         GR["Grafana :3000"]
