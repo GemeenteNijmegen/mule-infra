@@ -110,7 +110,7 @@ export class GrafanaStack extends Stack {
       .replace(/__OAUTH_CLIENT_ID__/g, grafanaOAuthClientId)
       .replace(/__OAUTH_PROVIDER_DOMAIN__/g, grafanaOAuthProviderDomain)
       .replace(/__OAUTH_REALM__/g, grafanaOAuthRealm);
-    const dashboards = ['mule-runtime-logs.json', 'erpx.json'].map((fileName): [string, string] => [
+    const dashboards = ['mule-runtime-logs.json', 'erpx.json', 'functioneel-beheer.json'].map((fileName): [string, string] => [
       `/var/lib/grafana/dashboards/${fileName}`,
       renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards', fileName), 'utf8')),
     ]);

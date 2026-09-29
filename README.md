@@ -125,7 +125,7 @@ flowchart LR
     subgraph lokiTask["Loki ECS task"]
         AL["Alloy sidecar<br/>otelcol.receiver.awscloudwatch"]
         LK["Loki :3100"]
-        AL -- "loki.write over localhost<br/>job=mule" --> LK
+        AL -- "loki.write over localhost<br/>job=mule, mule_app" --> LK
     end
 
     CWA -- "FilterLogEvents<br/>poll 1m" --> AL
@@ -178,6 +178,9 @@ To add a functional administrator:
    point, *Continue matching* on. `applicationName` is the entrypoint of the
    failing request, or the application itself for errors without a
    correlationId.
+
+The **Functioneel beheer** dashboard shows the failing requests per entrypoint
+application, with each request's first error message and a link to its trace.
 
 ## VPC Proxy (Tinyproxy)
 
