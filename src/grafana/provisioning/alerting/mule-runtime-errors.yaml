@@ -32,6 +32,8 @@ groups:
               # turning each line's timestamp into a label, taking the earliest
               # per application, and keeping the single lowest per correlationId.
               # The 0 * makes that second query contribute only its label.
+              # Milliseconds, because an entrypoint and the next application
+              # usually log within the same second, and a tie picks either.
               #
               # Windows are deliberately asymmetric: errors come from the same
               # 10m window as the rest of the rule, while the entrypoint is
@@ -53,7 +55,7 @@ groups:
                     min by (correlationId, applicationName) (
                       min_over_time(
                         {job="mule"} | json | correlationId!=""
-                        | label_format ts=`{{ __timestamp__ | unixEpoch }}`
+                        | label_format ts=`{{ __timestamp__ | unixEpochMillis }}`
                         | unwrap ts [1h]
                       )
                     )
