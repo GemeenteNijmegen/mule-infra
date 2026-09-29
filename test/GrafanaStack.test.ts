@@ -103,7 +103,7 @@ describe('GrafanaStack', () => {
     expect(contactPoint).toContain('{{ $$grafana }}{{ index .Annotations "dashboard_path" }}');
     // SNS rejects the publish when a test or resolved notification renders no body.
     expect(contactPoint).toContain('{{ range .Alerts -}}');
-    expect(contactPoint).toContain('Grafana sent an SNS notification without alert details.');
+    expect(contactPoint).toContain('Grafana heeft een SNS-notificatie zonder alertdetails verstuurd.');
     // One alert instance, and so one mail, per failing request.
     expect(rule).toContain('- correlationId');
   });

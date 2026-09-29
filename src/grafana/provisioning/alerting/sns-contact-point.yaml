@@ -6,6 +6,9 @@ contactPoints:
     receivers:
       - uid: mule-runtime-errors-sns
         type: sns
+        # A request's errors stop once the circuit breaker halts its retries,
+        # so a resolved alert says nothing about whether it was fixed.
+        disableResolveMessage: true
         settings:
           api_url: "https://sns.__AWS_REGION__.amazonaws.com"
           topic_arn: "__SNS_TOPIC_ARN__"
@@ -17,36 +20,38 @@ contactPoints:
           # evaluation failure (neither). SNS subjects are capped at 100
           # characters and allow no newlines; a correlationId is a 36-character
           # UUID, which leaves room for an application name.
-          subject: "Mule errors: {{ if .CommonLabels.correlationId }}{{ .CommonLabels.applicationName }} request {{ .CommonLabels.correlationId }}{{ else if .CommonLabels.applicationName }}{{ .CommonLabels.applicationName }} (no correlation ID){{ else }}runtime alert{{ end }} ({{ .Status }})"
+          subject: "Mule errors: {{ if .CommonLabels.correlationId }}{{ .CommonLabels.applicationName }} request {{ .CommonLabels.correlationId }}{{ else if .CommonLabels.applicationName }}{{ .CommonLabels.applicationName }} (geen correlationId){{ else }}runtime alert{{ end }}"
           # .ExternalURL (GF_SERVER_ROOT_URL) is captured up here because the
           # per-alert scope inside the range cannot see it. $$ escapes Grafana's
-          # env var interpolation, which would otherwise blank $grafana.
+          # env var interpolation, which would otherwise blank $grafana. The
+          # dashboard window runs from 15m before the alert started (the rule
+          # looks back 10m) to 2h after; Add takes nanoseconds.
           message: |
             {{ $$grafana := .ExternalURL -}}
             {{ range .Alerts -}}
             {{ if index .Labels "applicationName" -}}
             {{ index .Annotations "description" }}
 
-            Started: {{ .StartsAt }}
+            Gestart: {{ .StartsAt | tz "Europe/Amsterdam" | date "02-01-2006 15:04:05 MST" }}
 
             {{ if index .Labels "correlationId" -}}
-            Debug in Grafana - opens the dashboard with this request's full
-            trace loaded, oldest line first, so the entrypoint is at the top:
+            Bekijk in Grafana - het dashboard met de volledige trace van deze
+            request, oudste regel eerst, zodat de entrypoint bovenaan staat:
             {{ else -}}
-            Debug in Grafana - opens the dashboard filtered to this application:
+            Bekijk in Grafana - het dashboard gefilterd op deze applicatie:
             {{ end -}}
-            {{ $$grafana }}{{ index .Annotations "dashboard_path" }}
+            {{ $$grafana }}{{ index .Annotations "dashboard_path" }}&from={{ (.StartsAt.Add -900000000000).UnixMilli }}&to={{ (.StartsAt.Add 7200000000000).UnixMilli }}
 
-            Explore query:
+            Query voor Explore:
             {{ index .Annotations "logs_query" }}
-            Silence this alert: {{ .SilenceURL }}
+            Alert silencen: {{ .SilenceURL }}
             {{ else -}}
-            Grafana could not evaluate the Mule runtime error alert ({{ index .Labels "alertname" }}).
-            Loki is probably unreachable, so Mule errors are NOT being detected right now.
+            Grafana kon de Mule runtime alert niet evalueren ({{ index .Labels "alertname" }}).
+            Loki is waarschijnlijk onbereikbaar, dus Mule errors worden op dit moment NIET gedetecteerd.
             Alert: {{ .GeneratorURL }}
             {{ end }}
             {{ end -}}
             {{ if not .Alerts -}}
-            Grafana sent an SNS notification without alert details.
+            Grafana heeft een SNS-notificatie zonder alertdetails verstuurd.
             Alert: {{ .ExternalURL }}
             {{ end -}}
