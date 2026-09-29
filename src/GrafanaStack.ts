@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import {
   Aspects,
@@ -145,7 +146,8 @@ export class GrafanaStack extends Stack {
       'set -eu',
       ...Array.from(provisioningFiles.entries()).flatMap(([filePath, contents]) => [
         `mkdir -p '${path.posix.dirname(filePath)}'`,
-        `echo '${Buffer.from(contents).toString('base64')}' | base64 -d > '${filePath}'`,
+        // Gzipped to stay under the 64 KB task definition limit.
+        `echo '${zlib.gzipSync(contents).toString('base64')}' | base64 -d | gzip -d > '${filePath}'`,
       ]),
       'exec /run.sh',
     ].join('\n');

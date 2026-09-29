@@ -1,3 +1,4 @@
+import * as zlib from 'zlib';
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { Configuration } from '../src/Configuration';
@@ -267,14 +268,14 @@ describe('GrafanaStack', () => {
 });
 
 /**
- * Grafana's provisioning files are base64 blobs in the container command;
+ * Grafana's provisioning files are gzipped base64 blobs in the container command;
  * decode the one written to `filePath`.
  */
 function provisionedFile(template: Template, filePath: string): string {
   const commands = JSON.stringify(template.findResources('AWS::ECS::TaskDefinition'));
-  const match = new RegExp(`echo '([A-Za-z0-9+/=]+)' \\| base64 -d > '${filePath}'`).exec(commands);
+  const match = new RegExp(`echo '([A-Za-z0-9+/=]+)' \\| base64 -d \\| gzip -d > '${filePath}'`).exec(commands);
   if (!match) {
     throw new Error(`No provisioned file found at ${filePath}`);
   }
-  return Buffer.from(match[1], 'base64').toString('utf8');
+  return zlib.gunzipSync(Buffer.from(match[1], 'base64')).toString('utf8');
 }
