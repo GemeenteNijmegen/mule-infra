@@ -100,7 +100,7 @@ describe('GrafanaStack', () => {
 
     expect(rule).toContain('var-correlationId={{ $labels.correlationId }}');
     // The mail builds the link from Grafana's own base URL plus the annotation.
-    expect(contactPoint).toContain('{{ $grafana }}{{ index .Annotations "dashboard_path" }}');
+    expect(contactPoint).toContain('{{ $$grafana }}{{ index .Annotations "dashboard_path" }}');
     // SNS rejects the publish when a test or resolved notification renders no body.
     expect(contactPoint).toContain('{{ range .Alerts -}}');
     expect(contactPoint).toContain('Grafana sent an SNS notification without alert details.');

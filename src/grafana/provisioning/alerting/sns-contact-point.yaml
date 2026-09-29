@@ -19,9 +19,10 @@ contactPoints:
           # UUID, which leaves room for an application name.
           subject: "Mule errors: {{ if .CommonLabels.correlationId }}{{ .CommonLabels.applicationName }} request {{ .CommonLabels.correlationId }}{{ else if .CommonLabels.applicationName }}{{ .CommonLabels.applicationName }} (no correlation ID){{ else }}runtime alert{{ end }} ({{ .Status }})"
           # .ExternalURL (GF_SERVER_ROOT_URL) is captured up here because the
-          # per-alert scope inside the range cannot see it.
+          # per-alert scope inside the range cannot see it. $$ escapes Grafana's
+          # env var interpolation, which would otherwise blank $grafana.
           message: |
-            {{ $grafana := .ExternalURL -}}
+            {{ $$grafana := .ExternalURL -}}
             {{ range .Alerts -}}
             {{ if index .Labels "applicationName" -}}
             {{ index .Annotations "description" }}
@@ -34,7 +35,7 @@ contactPoints:
             {{ else -}}
             Debug in Grafana - opens the dashboard filtered to this application:
             {{ end -}}
-            {{ $grafana }}{{ index .Annotations "dashboard_path" }}
+            {{ $$grafana }}{{ index .Annotations "dashboard_path" }}
 
             Explore query:
             {{ index .Annotations "logs_query" }}
