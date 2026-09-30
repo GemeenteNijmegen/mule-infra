@@ -186,6 +186,37 @@ application, with each request's first error message and a link to its trace.
 
 An on-demand tinyproxy ECS task definition is deployed in `development` and `acceptance` environments to forward local laptop traffic to VPC / internal resources via AWS SSM port-forwarding.
 
+```mermaid
+flowchart LR
+    subgraph laptop["Laptop"]
+        S["start-proxy.sh /<br/>mq-console.sh"]
+        B["Browser / curl"]
+    end
+
+    SSM["SSM tunnel"]
+
+    subgraph vpc["VPC (development / acceptance)"]
+        TP["tinyproxy<br/>on-demand Fargate task"]
+        MQ["Amazon MQ console :8162"]
+        INT["Internal hosts :443"]
+    end
+
+    IRVN["Applications on<br/>the IRVN network"]
+
+    S -. "starts task + tunnel,<br/>stops both on Ctrl+C" .-> TP
+    B -- "proxy localhost:8888" --> SSM --> TP
+    TP --> MQ
+    TP --> INT
+    TP --> IRVN
+```
+
+The script reads the task settings from SSM Parameter Store, starts the task, opens
+the tunnel, and stops the task again on `Ctrl+C`.
+
+The proxy only listens inside the task; the SSM agent in the container dials out to Session
+Manager, so the security group needs no inbound rules and access is gated by IAM on
+`ssm:StartSession`. Everything is defined in [`src/ProxyStack.ts`](src/ProxyStack.ts).
+
 ### Usage
 
 Run [`scripts/start-proxy.sh`](file:///Users/esperkuijs/git/mule-infra/scripts/start-proxy.sh) to spin up an on-demand proxy task and establish an SSM tunnel:
