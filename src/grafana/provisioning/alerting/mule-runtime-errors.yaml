@@ -140,7 +140,6 @@ groups:
           # showing every application it passed through. The contact point adds
           # the time range.
           dashboard_path: "d/mule-runtime-logs/mule-runtime-logs?var-applicationName=.%2B&var-correlationId={{ $labels.correlationId }}&var-search="
-          logs_query: '{job="mule"} | json | correlationId="{{ $labels.correlationId }}"'
         labels:
           severity: critical
         isPaused: false
@@ -243,7 +242,6 @@ groups:
           summary: "Mule runtime errors zonder correlationId in {{ $labels.applicationName }}"
           description: "{{ $labels.applicationName }} heeft {{ $values.B.Value }} errors zonder correlationId gelogd; die horen bij geen request. Meestal zijn dit errors bij het opstarten of afsluiten."
           dashboard_path: "d/mule-runtime-logs/mule-runtime-logs?var-applicationName={{ $labels.applicationName }}&var-correlationId=&var-search="
-          logs_query: '{job="mule"} | json | applicationName="{{ $labels.applicationName }}" | priority="ERROR" | correlationId=""'
         labels:
           severity: critical
         isPaused: false

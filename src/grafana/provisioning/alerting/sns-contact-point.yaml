@@ -42,8 +42,6 @@ contactPoints:
             {{ end -}}
             {{ $$grafana }}{{ index .Annotations "dashboard_path" }}&from={{ (.StartsAt.Add -900000000000).UnixMilli }}&to={{ (.StartsAt.Add 7200000000000).UnixMilli }}
 
-            Query voor Explore:
-            {{ index .Annotations "logs_query" }}
             Alert silencen: {{ .SilenceURL }}
             {{ else -}}
             Grafana kon de Mule runtime alert niet evalueren ({{ index .Labels "alertname" }}).
