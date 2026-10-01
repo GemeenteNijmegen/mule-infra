@@ -18,7 +18,7 @@
         "type": "textbox",
         "name": "correlationId",
         "label": "Correlation ID",
-        "description": "Set automatically when you click a correlation ID in the 'Errors' or 'Recent correlation IDs' panel. Drives the 'Request trace' panel.",
+        "description": "Set automatically when you click a correlation ID in the 'Recent correlation IDs' panel. Drives the 'Request trace' panel.",
         "query": "",
         "current": { "text": "", "value": "" },
         "options": [{ "text": "", "value": "", "selected": true }]
@@ -151,62 +151,9 @@
     },
     {
       "datasource": { "type": "loki", "uid": "loki" },
-      "description": "ERROR-level lines. Click a correlation ID to load that request in the 'Request trace' panel below.",
-      "fieldConfig": {
-        "defaults": { "custom": { "align": "auto", "filterable": true } },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "correlationId" },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Trace this request",
-                    "url": "/d/mule-runtime-logs/mule-runtime-logs?var-correlationId=${__data.fields.correlationId}&${applicationName:queryparam}&${search:queryparam}&${__url_time_range}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
-      "id": 1,
-      "options": { "showHeader": true, "cellHeight": "sm" },
-      "targets": [
-        {
-          "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{job=\"mule\"} | json | priority=\"ERROR\" | applicationName=~\"$applicationName\" |~ \"(?i)$search\"",
-          "refId": "A"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": { "Line": true, "labels": true, "tsNs": true, "id": true },
-            "indexByName": {
-              "Time": 0,
-              "applicationName": 1,
-              "priority": 2,
-              "message": 3,
-              "correlationId": 4,
-              "tracePoint": 5,
-              "elapsed": 6
-            }
-          }
-        }
-      ],
-      "title": "Errors by application",
-      "type": "table"
-    },
-    {
-      "datasource": { "type": "loki", "uid": "loki" },
       "description": "All application JSON log lines. Narrow with the Application and 'Line contains' variables.",
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 26 },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 16 },
       "id": 3,
       "options": {
         "dedupStrategy": "none",
@@ -251,7 +198,7 @@
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 38 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
       "id": 6,
       "options": {
         "showHeader": true,
@@ -271,7 +218,7 @@
           "id": "organize",
           "options": {
             "excludeByName": { "Time": true },
-            "renameByName": { "Value": "Lines" }
+            "renameByName": { "Value #A": "Lines" }
           }
         }
       ],
@@ -282,7 +229,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "description": "Every log line for one correlation ID, oldest first. Empty until you click a correlation ID above or set the Correlation ID variable.",
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 46 },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 36 },
       "id": 4,
       "options": {
         "dedupStrategy": "none",
