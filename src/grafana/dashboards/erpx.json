@@ -1,8 +1,21 @@
 {
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
   },
-  "description": "Een aantal aanpassingen zijn doorgevoerd op ERPx dashbaord",
+  "description": "ERPx dashbaord",
   "editable": false,
   "graphTooltip": 0,
   "links": [],
@@ -78,7 +91,7 @@
           "refId": "A",
           "direction": "backward",
           "editorMode": "code",
-          "expr": "sum by (zender) (\n  count_over_time(\n    {service_name=\"mule\"}\n    | json\n    | applicationName =~ \"planon-eapi|energiemissie-eapi|ltc-eapi|easyfunders-eapi|fis-nijm-eadap|power2pay-padap|fis-nijm-papi\"\n    | content_zender != \"\" and content_zender !~ \"(?i)PROEF\"\n    | label_format zender=content_zender\n    [$__range]\n  )\n)",
+          "expr": "sum by (zender) (\n  count_over_time(\n    {service_name=\"mule\"}\n    | json\n    | applicationName =~ \"planon-eapi|energiemissie-eapi|ltc-eapi|easyfunders-eapi|fis-nijm-eadap|power2pay-padap|fis-nijm-papi\"\n    | content_zender != \"\" and content_zender !~ \"(?i)PROEF\"\n    | label_format zender=content_zender\n    [$__interval]\n  )\n)",
           "legendFormat": "{{zender}}",
           "queryType": "range"
         }
@@ -316,6 +329,19 @@
                 "value": 341
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "tijdstip",
+              "scope": "series"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 248
+              }
+            ]
           }
         ]
       },
@@ -374,7 +400,8 @@
               "names": [
                 "correlationId",
                 "content_description",
-                "zender"
+                "zender",
+                "timestamp"
               ]
             }
           }
@@ -415,6 +442,12 @@
                 "aggregations": [],
                 "operation": "groupby"
               },
+              "timestamp": {
+                "aggregations": [
+                  "firstNotNull"
+                ],
+                "operation": "aggregate"
+              },
               "zender": {
                 "aggregations": [],
                 "operation": "groupby"
@@ -427,10 +460,29 @@
           "options": {
             "excludeByName": {},
             "includeByName": {},
-            "indexByName": {},
+            "indexByName": {
+              "content_description (allValues)": 3,
+              "correlationId": 1,
+              "timestamp (firstNotNull)": 0,
+              "zender": 2
+            },
             "renameByName": {
-              "content_description (allValues)": "error description"
+              "content_description (allValues)": "error description",
+              "timestamp (firstNotNull)": "tijdstip"
             }
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "dateFormat": "",
+                "destinationType": "time",
+                "targetField": "tijdstip"
+              }
+            ],
+            "fields": {}
           }
         }
       ],
@@ -438,38 +490,33 @@
     }
   ],
   "refresh": "",
-  "schemaVersion": 41,
+  "schemaVersion": 42,
   "tags": [
     "loki",
     "mule",
     "erpx"
   ],
-  "templating": {
-    "list": [
-      {
-        "type": "adhoc",
-        "name": "Filters",
-        "label": "Filters",
-        "datasource": {
-          "type": "loki",
-          "uid": "loki"
-        },
-        "filters": [
-          {
-            "key": "service_name",
-            "operator": "=",
-            "value": "mule"
-          }
-        ]
-      }
-    ]
-  },
   "time": {
     "from": "now-24h",
     "to": "now"
   },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
   "timezone": "browser",
   "title": "ERPx",
   "uid": "erpx",
-  "version": 2
+  "version": 3,
+  "id": 4109261324627968
 }
