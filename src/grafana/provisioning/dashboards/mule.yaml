@@ -8,7 +8,7 @@ providers:
     disableDeletion: false
     allowUiUpdates: true
     options:
-      path: /var/lib/grafana/dashboards
+      path: /var/lib/grafana/dashboards/mule
 
   - name: erpx
     orgId: 1
