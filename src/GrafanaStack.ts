@@ -10,6 +10,7 @@ import {
   StackProps,
   aws_ec2 as ec2,
   aws_ecs as ecs,
+  aws_efs as efs,
   aws_iam as iam,
   aws_logs as logs,
   aws_s3 as s3,
@@ -17,8 +18,12 @@ import {
   aws_sns as sns,
   aws_sns_subscriptions as subscriptions,
 } from 'aws-cdk-lib';
+import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import { ApplicationLoadBalancer, ApplicationProtocol } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import { ARecord, HostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
+import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
@@ -54,6 +59,14 @@ export class GrafanaStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
+    const { grafanaOAuthClientId, grafanaOAuthProviderDomain, grafanaOAuthRealm } = props.configuration;
+    if (!grafanaOAuthClientId || !grafanaOAuthProviderDomain || !grafanaOAuthRealm) {
+      throw new Error(`Grafana OAuth is not configured for ${props.configuration.branchName}`);
+    }
+    const oauthClientSecret = Secret.fromSecretNameV2(this, 'GrafanaOAuthClientSecret', Statics.secretGrafanaOAuthClientSecret);
+    const hostedZone = this.importHostedzone();
+    const grafanaUrl = `https://grafana.${hostedZone.zoneName}`;
+
     const grafanaSg = new ec2.SecurityGroup(this, 'GrafanaSecurityGroup', {
       vpc: props.vpc,
       description: 'Security group for Grafana ECS task',
@@ -85,17 +98,27 @@ export class GrafanaStack extends Stack {
     alertTopic.addSubscription(new subscriptions.EmailSubscription('e.kuijs@nijmegen.nl'));
     alertTopic.grantPublish(taskDefinition.taskRole);
 
+    const dataFileSystem = this.createDataVolume(props, taskDefinition);
+
     const lokiUrl = this.createLoki(props, grafanaSg);
 
     const grafanaConfigRoot = path.join(__dirname, 'grafana');
     const renderGrafanaConfig = (contents: string) => contents
       .replace(/__AWS_REGION__/g, this.region)
       .replace(/__SNS_TOPIC_ARN__/g, alertTopicArn)
-      .replace(/__LOKI_URL__/g, lokiUrl);
-    const dashboard = renderGrafanaConfig(
-      fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards/mule-runtime-logs.json'), 'utf8'),
-    );
+      .replace(/__LOKI_URL__/g, lokiUrl)
+      .replace(/__OAUTH_CLIENT_ID__/g, grafanaOAuthClientId)
+      .replace(/__OAUTH_PROVIDER_DOMAIN__/g, grafanaOAuthProviderDomain)
+      .replace(/__OAUTH_REALM__/g, grafanaOAuthRealm);
+    const dashboards = ['mule-runtime-logs.json', 'erpx.json'].map((fileName): [string, string] => [
+      `/var/lib/grafana/dashboards/${fileName}`,
+      renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards', fileName), 'utf8')),
+    ]);
     const provisioningFiles = new Map<string, string>([
+      [
+        '/var/lib/grafana/conf/grafana.ini',
+        renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'conf/grafana.ini'), 'utf8')),
+      ],
       [
         '/var/lib/grafana/provisioning/dashboards/mule.yaml',
         fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/dashboards/mule.yaml'), 'utf8'),
@@ -112,7 +135,7 @@ export class GrafanaStack extends Stack {
           fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/sns-contact-point.yaml'), 'utf8'),
         ),
       ],
-      ['/var/lib/grafana/dashboards/mule-runtime-logs.json', dashboard],
+      ...dashboards,
       [
         '/var/lib/grafana/provisioning/datasources/loki.yaml',
         renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/datasources/loki.yaml'), 'utf8')),
@@ -124,7 +147,7 @@ export class GrafanaStack extends Stack {
         `mkdir -p '${path.posix.dirname(filePath)}'`,
         `echo '${Buffer.from(contents).toString('base64')}' | base64 -d > '${filePath}'`,
       ]),
-      'exec /run.sh grafana server --homepath=/usr/share/grafana --config=/etc/grafana/grafana.ini cfg:default.log.mode=console',
+      'exec /run.sh',
     ].join('\n');
     const container = taskDefinition.addContainer('GrafanaContainer', {
       image: ecs.ContainerImage.fromRegistry(Statics.grafanaDockerImage),
@@ -136,13 +159,20 @@ export class GrafanaStack extends Stack {
         logGroup,
       }),
       environment: {
+        // run.sh passes this as --config; arguments appended to run.sh can't override it.
+        GF_PATHS_CONFIG: '/var/lib/grafana/conf/grafana.ini',
         GF_PATHS_PROVISIONING: '/var/lib/grafana/provisioning',
+        // The SQLite database lives on EFS; everything under
+        // /var/lib/grafana is rewritten from this repository at start-up.
+        GF_PATHS_DATA: '/grafana-data',
         GF_SECURITY_ADMIN_USER: 'admin',
-        GF_SERVER_ROOT_URL: `http://${loadBalancer.loadBalancerDnsName}`,
+        // OAuth builds its redirect URI from the root URL.
+        GF_SERVER_ROOT_URL: grafanaUrl,
         GF_USERS_ALLOW_SIGN_UP: 'false',
       },
       secrets: {
         GF_SECURITY_ADMIN_PASSWORD: ecs.Secret.fromSecretsManager(adminPassword),
+        GF_OAUTH_CLIENT_SECRET: ecs.Secret.fromSecretsManager(oauthClientSecret),
       },
       healthCheck: {
         command: ['CMD-SHELL', 'wget -q -O - http://localhost:3000/api/health || exit 1'],
@@ -156,30 +186,29 @@ export class GrafanaStack extends Stack {
       containerPort: 3000,
       protocol: ecs.Protocol.TCP,
     });
+    container.addMountPoints({
+      containerPath: '/grafana-data',
+      readOnly: false,
+      sourceVolume: 'grafana-efs-volume',
+    });
     const service = new ecs.FargateService(this, 'GrafanaService', {
       cluster: props.cluster,
       taskDefinition,
       desiredCount: 1,
+      // SQLite on EFS tolerates one writer. A rolling update would briefly run
+      // two tasks against the same database file, and both would evaluate the
+      // alert rules and mail the same errors, so the old task is stopped before
+      // the new one starts. The 10m query window in the alert rules covers the
+      // resulting gap.
+      minHealthyPercent: 0,
+      maxHealthyPercent: 100,
+      availabilityZoneRebalancing: ecs.AvailabilityZoneRebalancing.DISABLED,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [grafanaSg],
       healthCheckGracePeriod: Duration.seconds(120),
       enableExecuteCommand: true,
     });
-    const httpListener = loadBalancer.addListener('GrafanaHttpListener', {
-      port: 80,
-      protocol: ApplicationProtocol.HTTP,
-    });
-    httpListener.addTargets('GrafanaTarget', {
-      protocol: ApplicationProtocol.HTTP,
-      targets: [service.loadBalancerTarget({
-        containerName: 'GrafanaContainer',
-        containerPort: 3000,
-      })],
-      healthCheck: {
-        path: '/api/health',
-        healthyHttpCodes: '200',
-      },
-    });
+    dataFileSystem.connections.allowDefaultPortFrom(service.connections);
     new CfnOutput(this, 'GrafanaUrl', {
       value: `http://${loadBalancer.loadBalancerDnsName}`,
     });
@@ -189,6 +218,99 @@ export class GrafanaStack extends Stack {
     new CfnOutput(this, 'GrafanaAlertTopicArn', {
       value: alertTopic.topicArn,
     });
+
+    const certificate = new Certificate(this, 'GrafanaCertificate', {
+      domainName: `grafana.${hostedZone.zoneName}`,
+      validation: CertificateValidation.fromDns(hostedZone),
+    });
+
+    const listener = loadBalancer.addListener('HTTPListener', {
+      port: 443,
+      certificates: [certificate],
+    });
+
+    new ARecord(
+      this,
+      'a-record',
+      {
+        zone: hostedZone,
+        target: RecordTarget.fromAlias(new LoadBalancerTarget(loadBalancer)),
+        recordName: 'grafana',
+      },
+    );
+
+    const loadBalancerTargets = [service.loadBalancerTarget({
+      containerName: 'GrafanaContainer',
+      containerPort: 3000,
+    })];
+
+    listener.addTargets('Target', {
+      protocol: ApplicationProtocol.HTTP,
+      targets: loadBalancerTargets,
+      healthCheck: {
+        path: '/api/health',
+        healthyHttpCodes: '200',
+      },
+    });
+  }
+
+  /**
+   * EFS volume for Grafana's SQLite database, mounted at /grafana-data.
+   *
+   * Without it the database is lost with the task, taking the alert silences,
+   * the notification log that suppresses repeat mails, and any dashboard built
+   * in the UI with it. Only the database lives here - the configuration,
+   * dashboards and alert rules under /var/lib/grafana are rewritten from this
+   * repository on every start, so they stay owned by the IaC.
+   *
+   * Returns the file system so the service can be allowed to reach it.
+   */
+  private createDataVolume(props: GrafanaStackProps, taskDefinition: ecs.FargateTaskDefinition): efs.FileSystem {
+    const fileSystem = new efs.FileSystem(this, 'GrafanaEfs', {
+      vpc: props.vpc,
+      encrypted: true,
+      lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
+      performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
+      outOfInfrequentAccessPolicy: efs.OutOfInfrequentAccessPolicy.AFTER_1_ACCESS,
+    });
+    // 472 is the grafana user in the image; the container runs as it.
+    const accessPoint = new efs.AccessPoint(this, 'GrafanaEfsAccessPoint', {
+      fileSystem,
+      path: '/grafana-data',
+      createAcl: {
+        ownerUid: '472',
+        ownerGid: '472',
+        permissions: '755',
+      },
+      posixUser: {
+        uid: '472',
+        gid: '472',
+      },
+    });
+    taskDefinition.addVolume({
+      name: 'grafana-efs-volume',
+      efsVolumeConfiguration: {
+        fileSystemId: fileSystem.fileSystemId,
+        transitEncryption: 'ENABLED',
+        authorizationConfig: {
+          accessPointId: accessPoint.accessPointId,
+          iam: 'ENABLED',
+        },
+      },
+    });
+    taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: [
+        'elasticfilesystem:ClientMount',
+        'elasticfilesystem:ClientWrite',
+      ],
+      resources: [fileSystem.fileSystemArn],
+      conditions: {
+        StringEquals: {
+          'elasticfilesystem:AccessPointArn': accessPoint.accessPointArn,
+        },
+      },
+    }));
+    return fileSystem;
   }
 
   /**
@@ -321,4 +443,18 @@ export class GrafanaStack extends Stack {
 
     return `http://loki.${namespace.namespaceName}:3100`;
   }
+
+  private importHostedzone() {
+    return HostedZone.fromHostedZoneAttributes(this, 'hostedzone', {
+      hostedZoneId: StringParameter.valueForStringParameter(
+        this,
+        Statics.accountHostedzoneId,
+      ),
+      zoneName: StringParameter.valueForStringParameter(
+        this,
+        Statics.accountHostedzoneName,
+      ),
+    });
+  }
 }
+

@@ -18,6 +18,9 @@ describe('GrafanaStack', () => {
       maxHealthyPercent: 100,
       proxyEnabled: true,
       mqHostInstanceType: 'mq.t3.micro',
+      grafanaOAuthClientId: 'grafana-test',
+      grafanaOAuthProviderDomain: 'auth.example.com',
+      grafanaOAuthRealm: 'mule',
     } as unknown as Configuration,
   };
 
@@ -82,7 +85,7 @@ describe('GrafanaStack', () => {
     expect(rule).not.toContain('applicationName!=""');
   });
 
-  test('the alert mail links to the dashboard for the failing application', () => {
+  test('the alert mail links to the trace of the failing request', () => {
     const app = new App();
     const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
     const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
@@ -95,10 +98,60 @@ describe('GrafanaStack', () => {
     const rule = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml');
     const contactPoint = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/sns-contact-point.yaml');
 
-    expect(rule).toContain('var-applicationName={{ $labels.applicationName }}');
+    expect(rule).toContain('var-correlationId={{ $labels.correlationId }}');
     // The mail builds the link from Grafana's own base URL plus the annotation.
     expect(contactPoint).toContain('{{ $grafana }}{{ index .Annotations "dashboard_path" }}');
-    expect(rule).toContain('- applicationName');
+    // SNS rejects the publish when a test or resolved notification renders no body.
+    expect(contactPoint).toContain('{{ range .Alerts -}}');
+    expect(contactPoint).toContain('Grafana sent an SNS notification without alert details.');
+    // One alert instance, and so one mail, per failing request.
+    expect(rule).toContain('- correlationId');
+  });
+
+  test('a fallback rule covers the errors that carry no correlation ID', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const rule = provisionedFile(
+      Template.fromStack(grafanaStack),
+      '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml',
+    );
+
+    // correlationId="" is exactly the set the per-request rule skips, so
+    // together the two rules cover every ERROR line Loki holds.
+    expect(rule).toContain('uid: mule-runtime-errors-no-correlation');
+    expect(rule).toContain('correlationId=""');
+  });
+
+  test('configures Keycloak OAuth with the client secret from Secrets Manager', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const template = Template.fromStack(grafanaStack);
+    const ini = provisionedFile(template, '/var/lib/grafana/conf/grafana.ini');
+
+    expect(ini).toContain('client_id = grafana-test');
+    expect(ini).toContain('token_url = https://auth.example.com/realms/mule/protocol/openid-connect/token');
+    // The secret is expanded by Grafana at start-up, never baked into the blob.
+    expect(ini).toContain('client_secret = $__env{GF_OAUTH_CLIENT_SECRET}');
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Environment: Match.arrayWith([{ Name: 'GF_PATHS_CONFIG', Value: '/var/lib/grafana/conf/grafana.ini' }]),
+          Secrets: Match.arrayWith([Match.objectLike({ Name: 'GF_OAUTH_CLIENT_SECRET' })]),
+        }),
+      ]),
+    });
   });
 
   test('deploys Loki and provisions it as the default Grafana datasource', () => {
@@ -119,6 +172,38 @@ describe('GrafanaStack', () => {
 
     expect(commandText).toContain('/var/lib/grafana/provisioning/datasources/loki.yaml');
     expect(commandText).not.toContain('/var/lib/grafana/provisioning/datasources/cloudwatch.yaml');
+  });
+
+  test('keeps the Grafana database on EFS and replaces the task without overlap', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const template = Template.fromStack(grafanaStack);
+
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Image: Match.stringLikeRegexp('grafana/grafana'),
+          Environment: Match.arrayWith([
+            Match.objectLike({ Name: 'GF_PATHS_DATA', Value: '/grafana-data' }),
+          ]),
+          MountPoints: [Match.objectLike({ ContainerPath: '/grafana-data' })],
+        }),
+      ]),
+    });
+
+    // Two tasks writing the same SQLite file would double-mail every alert.
+    template.hasResourceProperties('AWS::ECS::Service', {
+      DeploymentConfiguration: Match.objectLike({
+        MinimumHealthyPercent: 0,
+        MaximumPercent: 100,
+      }),
+    });
   });
 
   test('runs an Alloy sidecar that reads only the Mule application log group', () => {
