@@ -286,6 +286,8 @@ export class GrafanaStack extends Stack {
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
       outOfInfrequentAccessPolicy: efs.OutOfInfrequentAccessPolicy.AFTER_1_ACCESS,
+      // AWS Backup default plan: daily, 35 days retention.
+      enableAutomaticBackups: true,
     });
     // 472 is the grafana user in the image; the container runs as it.
     const accessPoint = new efs.AccessPoint(this, 'GrafanaEfsAccessPoint', {

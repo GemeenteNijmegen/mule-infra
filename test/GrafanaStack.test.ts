@@ -215,6 +215,10 @@ describe('GrafanaStack', () => {
       ]),
     });
 
+    template.hasResourceProperties('AWS::EFS::FileSystem', {
+      BackupPolicy: { Status: 'ENABLED' },
+    });
+
     // Two tasks writing the same SQLite file would double-mail every alert.
     template.hasResourceProperties('AWS::ECS::Service', {
       DeploymentConfiguration: Match.objectLike({
