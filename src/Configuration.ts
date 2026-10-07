@@ -137,7 +137,7 @@ const configurations: Configuration[] = [
     cpu: 2048,
     memoryLimitMiB: 16384,
     proxyEnabled: true,
-    grafanaEnabled: false,
+    grafanaEnabled: true,
     mqHostInstanceType: 'mq.t3.micro',
     cnames: {
       '_0B09FEE32BBC128264F775BF32511736.data': '447C490326AFABB4B06FAF37F45BA0E1.115767F454ECB8FACEE90B42FADF56A6.sectigo.com', //cert for on-prem layer7 auth (accp)
@@ -154,7 +154,7 @@ const configurations: Configuration[] = [
     cpu: 2048,
     memoryLimitMiB: 16384,
     proxyEnabled: false,
-    grafanaEnabled: false,
+    grafanaEnabled: true,
     mqHostInstanceType: 'mq.m5.large',
     cnames: {
       '_1DC27ABD6F2109D11C591AC526AF32E6.data': '4EE21CC4381A02B97A207FBD9D8829E5.6D9C8F9FE4391645761530BE296B0498.sectigo.com', //cert for on-prem layer7 auth (prod)
