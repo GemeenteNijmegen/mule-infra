@@ -111,10 +111,22 @@ export class GrafanaStack extends Stack {
       .replace(/__OAUTH_CLIENT_ID__/g, grafanaOAuthClientId)
       .replace(/__OAUTH_PROVIDER_DOMAIN__/g, grafanaOAuthProviderDomain)
       .replace(/__OAUTH_REALM__/g, grafanaOAuthRealm);
-    const dashboards = ['mule-runtime-logs.json', 'erpx.json', 'functioneel-beheer.json'].map((fileName): [string, string] => [
-      `/var/lib/grafana/dashboards/${fileName}`,
-      renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards', fileName), 'utf8')),
-    ]);
+    const dashboardRoot = path.join(grafanaConfigRoot, 'dashboards');
+    const dashboardFiles = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          return dashboardFiles(fullPath);
+        }
+        return entry.isFile() && entry.name.endsWith('.json') ? [fullPath] : [];
+      });
+    const dashboards = dashboardFiles(dashboardRoot).map((dashboardPath): [string, string] => {
+      const relativePath = path.relative(dashboardRoot, dashboardPath).split(path.sep).join('/');
+      return [
+        `/var/lib/grafana/dashboards/${relativePath}`,
+        renderGrafanaConfig(fs.readFileSync(dashboardPath, 'utf8')),
+      ];
+    });
     const provisioningFiles = new Map<string, string>([
       [
         '/var/lib/grafana/conf/grafana.ini',
