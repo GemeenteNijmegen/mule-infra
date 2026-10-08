@@ -3,7 +3,7 @@ apiVersion: 1
 groups:
   - orgId: 1
     name: mule-runtime-errors
-    folder: Mule
+    folder: mule-alerts
     # Evaluate every 5m against Loki. refId A counts ERROR-level lines per
     # correlationId over a 10m window (from: 600) - two 5m evaluation cycles of
     # overlap to absorb log-ingestion lag.
