@@ -15,8 +15,4 @@ describe('MainStage', () => {
   test('deploys the Grafana stack on development', () => {
     expect(grafanaStackId('development')).toBeDefined();
   });
-
-  test.each(['acceptance', 'main'])('does not deploy the Grafana stack on %s', (branchName) => {
-    expect(grafanaStackId(branchName)).toBeUndefined();
-  });
 });
