@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import {
   Aspects,
@@ -95,7 +96,7 @@ export class GrafanaStack extends Stack {
       topicName: alertTopicName,
       displayName: `Mule Grafana alerts ${props.configuration.branchName}`,
     });
-    alertTopic.addSubscription(new subscriptions.EmailSubscription('e.kuijs@nijmegen.nl'));
+    Statics.grafanaDevopsEmails.forEach((email) => alertTopic.addSubscription(new subscriptions.EmailSubscription(email)));
     alertTopic.grantPublish(taskDefinition.taskRole);
 
     const dataFileSystem = this.createDataVolume(props, taskDefinition);
@@ -110,10 +111,22 @@ export class GrafanaStack extends Stack {
       .replace(/__OAUTH_CLIENT_ID__/g, grafanaOAuthClientId)
       .replace(/__OAUTH_PROVIDER_DOMAIN__/g, grafanaOAuthProviderDomain)
       .replace(/__OAUTH_REALM__/g, grafanaOAuthRealm);
-    const dashboards = ['mule-runtime-logs.json', 'erpx.json'].map((fileName): [string, string] => [
-      `/var/lib/grafana/dashboards/${fileName}`,
-      renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards', fileName), 'utf8')),
-    ]);
+    const dashboardRoot = path.join(grafanaConfigRoot, 'dashboards');
+    const dashboardFiles = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          return dashboardFiles(fullPath);
+        }
+        return entry.isFile() && entry.name.endsWith('.json') ? [fullPath] : [];
+      });
+    const dashboards = dashboardFiles(dashboardRoot).map((dashboardPath): [string, string] => {
+      const relativePath = path.relative(dashboardRoot, dashboardPath).split(path.sep).join('/');
+      return [
+        `/var/lib/grafana/dashboards/${relativePath}`,
+        renderGrafanaConfig(fs.readFileSync(dashboardPath, 'utf8')),
+      ];
+    });
     const provisioningFiles = new Map<string, string>([
       [
         '/var/lib/grafana/conf/grafana.ini',
@@ -145,7 +158,8 @@ export class GrafanaStack extends Stack {
       'set -eu',
       ...Array.from(provisioningFiles.entries()).flatMap(([filePath, contents]) => [
         `mkdir -p '${path.posix.dirname(filePath)}'`,
-        `echo '${Buffer.from(contents).toString('base64')}' | base64 -d > '${filePath}'`,
+        // Gzipped to stay under the 64 KB task definition limit.
+        `echo '${zlib.gzipSync(contents).toString('base64')}' | base64 -d | gzip -d > '${filePath}'`,
       ]),
       'exec /run.sh',
     ].join('\n');
@@ -272,6 +286,8 @@ export class GrafanaStack extends Stack {
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
       outOfInfrequentAccessPolicy: efs.OutOfInfrequentAccessPolicy.AFTER_1_ACCESS,
+      // AWS Backup default plan: daily, 35 days retention.
+      enableAutomaticBackups: true,
     });
     // 472 is the grafana user in the image; the container runs as it.
     const accessPoint = new efs.AccessPoint(this, 'GrafanaEfsAccessPoint', {
@@ -329,7 +345,8 @@ export class GrafanaStack extends Stack {
       enforceSSL: true,
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
-      lifecycleRules: [{ expiration: Duration.days(21) }],
+      // Keep in sync with max_query_lookback in loki-config.yaml.
+      lifecycleRules: [{ expiration: Duration.days(30) }],
     });
 
     const securityGroup = new ec2.SecurityGroup(this, 'LokiSecurityGroup', {

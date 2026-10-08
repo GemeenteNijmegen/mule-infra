@@ -68,6 +68,21 @@ otelcol.processor.batch "mule" {
 // Each CloudWatch event becomes a Loki entry whose line is the raw Mule log
 // string, so Grafana's `| json` parser and the error alert keep working.
 otelcol.exporter.loki "mule" {
+	forward_to = [loki.process.mule.receiver]
+}
+
+// The application as stream label mule_app, so dashboards can list and select
+// applications without parsing every line. Not applicationName: a stream label
+// would shadow the JSON field the existing queries parse.
+loki.process "mule" {
+	stage.json {
+		expressions = { mule_app = "applicationName" }
+	}
+
+	stage.labels {
+		values = { mule_app = "" }
+	}
+
 	forward_to = [loki.write.mule.receiver]
 }
 

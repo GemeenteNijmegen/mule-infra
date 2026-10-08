@@ -32,6 +32,8 @@ groups:
               # turning each line's timestamp into a label, taking the earliest
               # per application, and keeping the single lowest per correlationId.
               # The 0 * makes that second query contribute only its label.
+              # Milliseconds, because an entrypoint and the next application
+              # usually log within the same second, and a tie picks either.
               #
               # Windows are deliberately asymmetric: errors come from the same
               # 10m window as the rest of the rule, while the entrypoint is
@@ -53,7 +55,7 @@ groups:
                     min by (correlationId, applicationName) (
                       min_over_time(
                         {job="mule"} | json | correlationId!=""
-                        | label_format ts=`{{ __timestamp__ | unixEpoch }}`
+                        | label_format ts=`{{ __timestamp__ | unixEpochMillis }}`
                         | unwrap ts [1h]
                       )
                     )
@@ -131,24 +133,15 @@ groups:
           __dashboardUid__: mule-runtime-logs
           # Errors over time; annotations render on a time series, not a table.
           __panelId__: "2"
-          summary: "Mule runtime errors for request {{ $labels.correlationId }} via {{ $labels.applicationName }}"
-          description: "Request {{ $labels.correlationId }}, entered through {{ $labels.applicationName }}, logged {{ $values.B.Value }} errors in the evaluation window. The errors may come from any application in the chain."
-          # Appended to Grafana's external URL by the contact point: the
-          # dashboard with this request's trace loaded, showing every
-          # application it passed through. Relative window - templates cannot do
-          # time arithmetic.
-          dashboard_path: "/d/mule-runtime-logs/mule-runtime-logs?var-applicationName=.%2B&var-correlationId={{ $labels.correlationId }}&var-search=&from=now-3h&to=now"
-          logs_query: '{job="mule"} | json | correlationId="{{ $labels.correlationId }}"'
+          summary: "Mule runtime errors voor request {{ $labels.correlationId }} via {{ $labels.applicationName }}"
+          description: "Request {{ $labels.correlationId }}, binnengekomen via {{ $labels.applicationName }}, heeft {{ $values.B.Value }} errors gelogd in het evaluatievenster. De errors kunnen uit elke applicatie in de keten komen."
+          # Appended to Grafana's external URL, which ends in a slash, by the
+          # contact point: the dashboard with this request's trace loaded,
+          # showing every application it passed through. The contact point adds
+          # the time range.
+          dashboard_path: "d/mule-runtime-logs/mule-runtime-logs?var-applicationName=.%2B&var-correlationId={{ $labels.correlationId }}&var-search="
         labels:
           severity: critical
-        notification_settings:
-          receiver: mule-runtime-errors-sns
-          # One mail per failing request, each with its own subject and link.
-          # Grafana rejects a group_by without grafana_folder and alertname.
-          group_by:
-            - grafana_folder
-            - alertname
-            - correlationId
         isPaused: false
       # Fallback for the errors the rule above cannot see. Lines without a
       # correlationId belong to no request - they are startup, shutdown and
@@ -246,18 +239,9 @@ groups:
           __dashboardUid__: mule-runtime-logs
           # Errors over time by application - these have no request to trace.
           __panelId__: "2"
-          summary: "Mule runtime errors without correlation ID in {{ $labels.applicationName }}"
-          description: "{{ $labels.applicationName }} logged {{ $values.B.Value }} errors that carry no correlationId, so they belong to no request. Startup and shutdown failures look like this."
-          dashboard_path: "/d/mule-runtime-logs/mule-runtime-logs?var-applicationName={{ $labels.applicationName }}&var-correlationId=&var-search=&from=now-3h&to=now"
-          logs_query: '{job="mule"} | json | applicationName="{{ $labels.applicationName }}" | priority="ERROR" | correlationId=""'
+          summary: "Mule runtime errors zonder correlationId in {{ $labels.applicationName }}"
+          description: "{{ $labels.applicationName }} heeft {{ $values.B.Value }} errors zonder correlationId gelogd; die horen bij geen request. Meestal zijn dit errors bij het opstarten of afsluiten."
+          dashboard_path: "d/mule-runtime-logs/mule-runtime-logs?var-applicationName={{ $labels.applicationName }}&var-correlationId=&var-search="
         labels:
           severity: critical
-        notification_settings:
-          receiver: mule-runtime-errors-sns
-          # One mail per application. Grafana rejects a group_by without
-          # grafana_folder and alertname.
-          group_by:
-            - grafana_folder
-            - alertname
-            - applicationName
         isPaused: false
