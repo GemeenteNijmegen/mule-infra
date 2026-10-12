@@ -99,7 +99,7 @@ describe('GrafanaStack', () => {
     const rule = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml');
     const contactPoint = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/sns-contact-point.yaml');
 
-    expect(rule).toContain('var-correlationId={{ $labels.correlationId }}');
+    expect(rule).toContain('var-correlationId={{ $labels.correlationId | urlquery }}');
     // The mail builds the link from Grafana's own base URL plus the annotation.
     expect(contactPoint).toContain('{{ $$grafana }}{{ index .Annotations "dashboard_path" }}');
     // SNS rejects the publish when a test or resolved notification renders no body.
