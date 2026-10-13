@@ -37,8 +37,6 @@ contactPoints:
             Bekijk in Grafana - het dashboard gefilterd op deze applicatie:
             {{ end -}}
             {{ $$grafana }}{{ index .Annotations "dashboard_path" }}&from={{ (.StartsAt.Add -900000000000).UnixMilli }}&to={{ (.StartsAt.Add 7200000000000).UnixMilli }}
-
-            Alert silencen: {{ .SilenceURL }}
             {{ else -}}
             Grafana kon de Mule runtime alert niet evalueren ({{ index .Labels "alertname" }}).
             Loki is waarschijnlijk onbereikbaar, dus Mule errors worden op dit moment NIET gedetecteerd.
