@@ -2,24 +2,20 @@ apiVersion: 1
 
 contactPoints:
   - orgId: 1
-    name: mule-runtime-errors-sns
+    name: mule-runtime-errors-email
     receivers:
-      - uid: mule-runtime-errors-sns
-        type: sns
+      - uid: mule-runtime-errors-email
+        type: email
         # A request's errors stop once the circuit breaker halts its retries,
         # so a resolved alert says nothing about whether it was fixed.
         disableResolveMessage: true
         settings:
-          api_url: "https://sns.__AWS_REGION__.amazonaws.com"
-          topic_arn: "__SNS_TOPIC_ARN__"
-          sigv4:
-            region: "__AWS_REGION__"
+          addresses: "__DEVOPS_EMAILS__"
+          singleEmail: true
           # Three shapes of alert reach this contact point: a failing request
           # (entrypoint application plus correlationId), a runtime error that
           # belongs to no request (application only), and a Grafana-side
-          # evaluation failure (neither). SNS subjects are capped at 100
-          # characters and allow no newlines; a correlationId is a 36-character
-          # UUID, which leaves room for an application name.
+          # evaluation failure (neither).
           subject: "Mule errors: {{ if .CommonLabels.correlationId }}{{ .CommonLabels.applicationName }} request {{ .CommonLabels.correlationId }}{{ else if .CommonLabels.applicationName }}{{ .CommonLabels.applicationName }} (geen correlationId){{ else }}runtime alert{{ end }}"
           # .ExternalURL (GF_SERVER_ROOT_URL) is captured up here because the
           # per-alert scope inside the range cannot see it. $$ escapes Grafana's
@@ -48,8 +44,4 @@ contactPoints:
             Loki is waarschijnlijk onbereikbaar, dus Mule errors worden op dit moment NIET gedetecteerd.
             Alert: {{ .GeneratorURL }}
             {{ end }}
-            {{ end -}}
-            {{ if not .Alerts -}}
-            Grafana heeft een SNS-notificatie zonder alertdetails verstuurd.
-            Alert: {{ .ExternalURL }}
             {{ end -}}
