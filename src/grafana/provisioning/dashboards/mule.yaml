@@ -14,7 +14,7 @@ providers:
   - name: erpx
     orgId: 1
     folder: ERPx
-    folderUid: erpx
+    folderUid: erpx-folder
     type: file
     disableDeletion: false
     allowUiUpdates: true

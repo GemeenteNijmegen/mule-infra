@@ -22,6 +22,7 @@ describe('GrafanaStack', () => {
       grafanaOAuthClientId: 'grafana-test',
       grafanaOAuthProviderDomain: 'auth.example.com',
       grafanaOAuthRealm: 'mule',
+      grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-dev',
     } as unknown as Configuration,
   };
 
@@ -52,15 +53,21 @@ describe('GrafanaStack', () => {
       ContainerDefinitions: Match.arrayWith([
         Match.objectLike({
           Command: Match.arrayWith([
-            Match.stringLikeRegexp('/var/lib/grafana/provisioning/alerting/sns-contact-point.yaml'),
+            Match.stringLikeRegexp('/var/lib/grafana/provisioning/alerting/email-contact-point.yaml'),
           ]),
         }),
       ]),
     });
 
-    template.hasResourceProperties('AWS::SNS::Subscription', {
-      Protocol: 'email',
-      Endpoint: 'e.kuijs@nijmegen.nl',
+    expect(provisionedFile(template, '/var/lib/grafana/provisioning/alerting/email-contact-point.yaml'))
+      .toContain('addresses: "e.kuijs@nijmegen.nl"');
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Environment: Match.arrayWith([{ Name: 'GF_SMTP_HOST', Value: 'email-smtp.eu-central-1.amazonaws.com:587' }]),
+          Secrets: Match.arrayWith([Match.objectLike({ Name: 'GF_SMTP_PASSWORD' })]),
+        }),
+      ]),
     });
   });
 
@@ -97,14 +104,11 @@ describe('GrafanaStack', () => {
 
     const template = Template.fromStack(grafanaStack);
     const rule = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml');
-    const contactPoint = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/sns-contact-point.yaml');
+    const contactPoint = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/email-contact-point.yaml');
 
-    expect(rule).toContain('var-correlationId={{ $labels.correlationId }}');
+    expect(rule).toContain('var-correlationId={{ $labels.correlationId | urlquery }}');
     // The mail builds the link from Grafana's own base URL plus the annotation.
     expect(contactPoint).toContain('{{ $$grafana }}{{ index .Annotations "dashboard_path" }}');
-    // SNS rejects the publish when a test or resolved notification renders no body.
-    expect(contactPoint).toContain('{{ range .Alerts -}}');
-    expect(contactPoint).toContain('Grafana heeft een SNS-notificatie zonder alertdetails verstuurd.');
   });
 
   test('the rules leave routing to the notification policy tree', () => {
