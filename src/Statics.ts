@@ -68,6 +68,10 @@ export class Statics {
   static readonly lokiDockerImage = 'grafana/loki:3.5.3';
   static readonly alloyDockerImage = 'grafana/alloy:v1.19.2';
   static readonly secretGrafanaOAuthClientSecret = `/${Statics.projectName}/grafana/oauth-clientsecret`;
+  /**
+   * DevOps receives every Grafana alert, through the notification policy tree.
+   */
+  static readonly grafanaDevopsEmails = ['e.kuijs@nijmegen.nl'];
 
   // MARK: proxy task (on-demand tinyproxy)
   static readonly proxyContainerPort = 8888;

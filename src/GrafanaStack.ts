@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import {
   Aspects,
@@ -15,8 +16,6 @@ import {
   aws_logs as logs,
   aws_s3 as s3,
   aws_servicediscovery as servicediscovery,
-  aws_sns as sns,
-  aws_sns_subscriptions as subscriptions,
 } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import { ApplicationLoadBalancer, ApplicationProtocol } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
@@ -59,11 +58,15 @@ export class GrafanaStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
-    const { grafanaOAuthClientId, grafanaOAuthProviderDomain, grafanaOAuthRealm } = props.configuration;
+    const { grafanaOAuthClientId, grafanaOAuthProviderDomain, grafanaOAuthRealm, grafanaSmtpSecretName } = props.configuration;
     if (!grafanaOAuthClientId || !grafanaOAuthProviderDomain || !grafanaOAuthRealm) {
       throw new Error(`Grafana OAuth is not configured for ${props.configuration.branchName}`);
     }
+    if (!grafanaSmtpSecretName) {
+      throw new Error(`Grafana SMTP is not configured for ${props.configuration.branchName}`);
+    }
     const oauthClientSecret = Secret.fromSecretNameV2(this, 'GrafanaOAuthClientSecret', Statics.secretGrafanaOAuthClientSecret);
+    const smtpCredentials = Secret.fromSecretNameV2(this, 'GrafanaSmtpCredentials', grafanaSmtpSecretName);
     const hostedZone = this.importHostedzone();
     const grafanaUrl = `https://grafana.${hostedZone.zoneName}`;
 
@@ -89,15 +92,6 @@ export class GrafanaStack extends Stack {
       cpu: 512,
       memoryLimitMiB: 1024,
     });
-    const alertTopicName = `${Statics.projectName}-grafana-alerts-${props.configuration.branchName}`;
-    const alertTopicArn = `arn:aws:sns:${this.region}:${this.account}:${alertTopicName}`;
-    const alertTopic = new sns.Topic(this, 'GrafanaAlertTopic', {
-      topicName: alertTopicName,
-      displayName: `Mule Grafana alerts ${props.configuration.branchName}`,
-    });
-    alertTopic.addSubscription(new subscriptions.EmailSubscription('e.kuijs@nijmegen.nl'));
-    alertTopic.grantPublish(taskDefinition.taskRole);
-
     const dataFileSystem = this.createDataVolume(props, taskDefinition);
 
     const lokiUrl = this.createLoki(props, grafanaSg);
@@ -105,15 +99,27 @@ export class GrafanaStack extends Stack {
     const grafanaConfigRoot = path.join(__dirname, 'grafana');
     const renderGrafanaConfig = (contents: string) => contents
       .replace(/__AWS_REGION__/g, this.region)
-      .replace(/__SNS_TOPIC_ARN__/g, alertTopicArn)
+      .replace(/__DEVOPS_EMAILS__/g, Statics.grafanaDevopsEmails.join(';'))
       .replace(/__LOKI_URL__/g, lokiUrl)
       .replace(/__OAUTH_CLIENT_ID__/g, grafanaOAuthClientId)
       .replace(/__OAUTH_PROVIDER_DOMAIN__/g, grafanaOAuthProviderDomain)
       .replace(/__OAUTH_REALM__/g, grafanaOAuthRealm);
-    const dashboards = ['mule-runtime-logs.json', 'erpx.json'].map((fileName): [string, string] => [
-      `/var/lib/grafana/dashboards/${fileName}`,
-      renderGrafanaConfig(fs.readFileSync(path.join(grafanaConfigRoot, 'dashboards', fileName), 'utf8')),
-    ]);
+    const dashboardRoot = path.join(grafanaConfigRoot, 'dashboards');
+    const dashboardFiles = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          return dashboardFiles(fullPath);
+        }
+        return entry.isFile() && entry.name.endsWith('.json') ? [fullPath] : [];
+      });
+    const dashboards = dashboardFiles(dashboardRoot).map((dashboardPath): [string, string] => {
+      const relativePath = path.relative(dashboardRoot, dashboardPath).split(path.sep).join('/');
+      return [
+        `/var/lib/grafana/dashboards/${relativePath}`,
+        renderGrafanaConfig(fs.readFileSync(dashboardPath, 'utf8')),
+      ];
+    });
     const provisioningFiles = new Map<string, string>([
       [
         '/var/lib/grafana/conf/grafana.ini',
@@ -130,9 +136,9 @@ export class GrafanaStack extends Stack {
         ),
       ],
       [
-        '/var/lib/grafana/provisioning/alerting/sns-contact-point.yaml',
+        '/var/lib/grafana/provisioning/alerting/email-contact-point.yaml',
         renderGrafanaConfig(
-          fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/sns-contact-point.yaml'), 'utf8'),
+          fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/email-contact-point.yaml'), 'utf8'),
         ),
       ],
       ...dashboards,
@@ -145,7 +151,8 @@ export class GrafanaStack extends Stack {
       'set -eu',
       ...Array.from(provisioningFiles.entries()).flatMap(([filePath, contents]) => [
         `mkdir -p '${path.posix.dirname(filePath)}'`,
-        `echo '${Buffer.from(contents).toString('base64')}' | base64 -d > '${filePath}'`,
+        // Gzipped to stay under the 64 KB task definition limit.
+        `echo '${zlib.gzipSync(contents).toString('base64')}' | base64 -d | gzip -d > '${filePath}'`,
       ]),
       'exec /run.sh',
     ].join('\n');
@@ -169,10 +176,19 @@ export class GrafanaStack extends Stack {
         // OAuth builds its redirect URI from the root URL.
         GF_SERVER_ROOT_URL: grafanaUrl,
         GF_USERS_ALLOW_SIGN_UP: 'false',
+        // Alert mail goes out through SES; the account domain is verified by
+        // aws-ses-management. Set here rather than in grafana.ini because the
+        // zone name is a deploy-time token.
+        GF_SMTP_ENABLED: 'true',
+        GF_SMTP_HOST: `email-smtp.${this.region}.amazonaws.com:587`,
+        GF_SMTP_FROM_ADDRESS: `grafana@${hostedZone.zoneName}`,
+        GF_SMTP_FROM_NAME: `Mule Grafana ${props.configuration.branchName}`,
       },
       secrets: {
         GF_SECURITY_ADMIN_PASSWORD: ecs.Secret.fromSecretsManager(adminPassword),
         GF_OAUTH_CLIENT_SECRET: ecs.Secret.fromSecretsManager(oauthClientSecret),
+        GF_SMTP_USER: ecs.Secret.fromSecretsManager(smtpCredentials, 'username'),
+        GF_SMTP_PASSWORD: ecs.Secret.fromSecretsManager(smtpCredentials, 'password'),
       },
       healthCheck: {
         command: ['CMD-SHELL', 'wget -q -O - http://localhost:3000/api/health || exit 1'],
@@ -214,9 +230,6 @@ export class GrafanaStack extends Stack {
     });
     new CfnOutput(this, 'GrafanaAdminSecretArn', {
       value: adminPassword.secretArn,
-    });
-    new CfnOutput(this, 'GrafanaAlertTopicArn', {
-      value: alertTopic.topicArn,
     });
 
     const certificate = new Certificate(this, 'GrafanaCertificate', {
@@ -272,6 +285,8 @@ export class GrafanaStack extends Stack {
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
       outOfInfrequentAccessPolicy: efs.OutOfInfrequentAccessPolicy.AFTER_1_ACCESS,
+      // AWS Backup default plan: daily, 35 days retention.
+      enableAutomaticBackups: true,
     });
     // 472 is the grafana user in the image; the container runs as it.
     const accessPoint = new efs.AccessPoint(this, 'GrafanaEfsAccessPoint', {
@@ -329,7 +344,8 @@ export class GrafanaStack extends Stack {
       enforceSSL: true,
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
-      lifecycleRules: [{ expiration: Duration.days(21) }],
+      // Keep in sync with max_query_lookback in loki-config.yaml.
+      lifecycleRules: [{ expiration: Duration.days(30) }],
     });
 
     const securityGroup = new ec2.SecurityGroup(this, 'LokiSecurityGroup', {

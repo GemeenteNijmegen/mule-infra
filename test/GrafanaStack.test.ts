@@ -1,3 +1,4 @@
+import * as zlib from 'zlib';
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { Configuration } from '../src/Configuration';
@@ -21,6 +22,7 @@ describe('GrafanaStack', () => {
       grafanaOAuthClientId: 'grafana-test',
       grafanaOAuthProviderDomain: 'auth.example.com',
       grafanaOAuthRealm: 'mule',
+      grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-dev',
     } as unknown as Configuration,
   };
 
@@ -51,15 +53,21 @@ describe('GrafanaStack', () => {
       ContainerDefinitions: Match.arrayWith([
         Match.objectLike({
           Command: Match.arrayWith([
-            Match.stringLikeRegexp('/var/lib/grafana/provisioning/alerting/sns-contact-point.yaml'),
+            Match.stringLikeRegexp('/var/lib/grafana/provisioning/alerting/email-contact-point.yaml'),
           ]),
         }),
       ]),
     });
 
-    template.hasResourceProperties('AWS::SNS::Subscription', {
-      Protocol: 'email',
-      Endpoint: 'e.kuijs@nijmegen.nl',
+    expect(provisionedFile(template, '/var/lib/grafana/provisioning/alerting/email-contact-point.yaml'))
+      .toContain('addresses: "e.kuijs@nijmegen.nl"');
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Environment: Match.arrayWith([{ Name: 'GF_SMTP_HOST', Value: 'email-smtp.eu-central-1.amazonaws.com:587' }]),
+          Secrets: Match.arrayWith([Match.objectLike({ Name: 'GF_SMTP_PASSWORD' })]),
+        }),
+      ]),
     });
   });
 
@@ -96,16 +104,30 @@ describe('GrafanaStack', () => {
 
     const template = Template.fromStack(grafanaStack);
     const rule = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml');
-    const contactPoint = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/sns-contact-point.yaml');
+    const contactPoint = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/email-contact-point.yaml');
 
-    expect(rule).toContain('var-correlationId={{ $labels.correlationId }}');
+    expect(rule).toContain('var-correlationId={{ $labels.correlationId | urlquery }}');
     // The mail builds the link from Grafana's own base URL plus the annotation.
-    expect(contactPoint).toContain('{{ $grafana }}{{ index .Annotations "dashboard_path" }}');
-    // SNS rejects the publish when a test or resolved notification renders no body.
-    expect(contactPoint).toContain('{{ range .Alerts -}}');
-    expect(contactPoint).toContain('Grafana sent an SNS notification without alert details.');
-    // One alert instance, and so one mail, per failing request.
-    expect(rule).toContain('- correlationId');
+    expect(contactPoint).toContain('{{ $$grafana }}{{ index .Annotations "dashboard_path" }}');
+  });
+
+  test('the rules leave routing to the notification policy tree', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', { ...defaultProps });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const rule = provisionedFile(
+      Template.fromStack(grafanaStack),
+      '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml',
+    );
+
+    // A contact point on the rule would bypass the tree, and with it the
+    // functional administrators' policies managed in Grafana.
+    expect(rule).not.toContain('notification_settings');
   });
 
   test('a fallback rule covers the errors that carry no correlation ID', () => {
@@ -197,6 +219,10 @@ describe('GrafanaStack', () => {
       ]),
     });
 
+    template.hasResourceProperties('AWS::EFS::FileSystem', {
+      BackupPolicy: { Status: 'ENABLED' },
+    });
+
     // Two tasks writing the same SQLite file would double-mail every alert.
     template.hasResourceProperties('AWS::ECS::Service', {
       DeploymentConfiguration: Match.objectLike({
@@ -250,14 +276,14 @@ describe('GrafanaStack', () => {
 });
 
 /**
- * Grafana's provisioning files are base64 blobs in the container command;
+ * Grafana's provisioning files are gzipped base64 blobs in the container command;
  * decode the one written to `filePath`.
  */
 function provisionedFile(template: Template, filePath: string): string {
   const commands = JSON.stringify(template.findResources('AWS::ECS::TaskDefinition'));
-  const match = new RegExp(`echo '([A-Za-z0-9+/=]+)' \\| base64 -d > '${filePath}'`).exec(commands);
+  const match = new RegExp(`echo '([A-Za-z0-9+/=]+)' \\| base64 -d \\| gzip -d > '${filePath}'`).exec(commands);
   if (!match) {
     throw new Error(`No provisioned file found at ${filePath}`);
   }
-  return Buffer.from(match[1], 'base64').toString('utf8');
+  return zlib.gunzipSync(Buffer.from(match[1], 'base64')).toString('utf8');
 }
