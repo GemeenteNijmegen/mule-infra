@@ -1,0 +1,45 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: mule-runtime-errors-email
+    receivers:
+      - uid: mule-runtime-errors-email
+        type: email
+        # A request's errors stop once the circuit breaker halts its retries,
+        # so a resolved alert says nothing about whether it was fixed.
+        disableResolveMessage: true
+        settings:
+          addresses: "__DEVOPS_EMAILS__"
+          singleEmail: true
+          # Three shapes of alert reach this contact point: a failing request
+          # (entrypoint application plus correlationId), a runtime error that
+          # belongs to no request (application only), and a Grafana-side
+          # evaluation failure (neither).
+          subject: "Mule errors: {{ if .CommonLabels.correlationId }}{{ .CommonLabels.applicationName }} request {{ .CommonLabels.correlationId }}{{ else if .CommonLabels.applicationName }}{{ .CommonLabels.applicationName }} (geen correlationId){{ else }}runtime alert{{ end }}"
+          # .ExternalURL (GF_SERVER_ROOT_URL) is captured up here because the
+          # per-alert scope inside the range cannot see it. $$ escapes Grafana's
+          # env var interpolation, which would otherwise blank $grafana. The
+          # dashboard window runs from 15m before the alert started (the rule
+          # looks back 10m) to 2h after; Add takes nanoseconds.
+          message: |
+            {{ $$grafana := .ExternalURL -}}
+            {{ range .Alerts -}}
+            {{ if index .Labels "applicationName" -}}
+            {{ index .Annotations "description" }}
+
+            Gestart: {{ .StartsAt | tz "Europe/Amsterdam" | date "02-01-2006 15:04:05 MST" }}
+
+            {{ if index .Labels "correlationId" -}}
+            Bekijk in Grafana - het dashboard met de volledige trace van deze
+            request, oudste regel eerst, zodat de entrypoint bovenaan staat:
+            {{ else -}}
+            Bekijk in Grafana - het dashboard gefilterd op deze applicatie:
+            {{ end -}}
+            {{ $$grafana }}{{ index .Annotations "dashboard_path" }}&from={{ (.StartsAt.Add -900000000000).UnixMilli }}&to={{ (.StartsAt.Add 7200000000000).UnixMilli }}
+            {{ else -}}
+            Grafana kon de Mule runtime alert niet evalueren ({{ index .Labels "alertname" }}).
+            Loki is waarschijnlijk onbereikbaar, dus Mule errors worden op dit moment NIET gedetecteerd.
+            Alert: {{ .GeneratorURL }}
+            {{ end }}
+            {{ end -}}

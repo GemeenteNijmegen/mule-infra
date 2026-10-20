@@ -94,18 +94,21 @@ TASK_ID="${TASK_ARN##*/}"
 # -- Ensure the tunnel and task are cleaned up on exit ---------------------- --
 SSM_PID=""
 SSM_LOG="${TMPDIR:-/tmp}/mq-console-ssm.$$.log"
-BROWSER_PID=""
 BROWSER_PROFILE=""
 CLEANED=0
+# Match the browser by its profile path, not by PID: on macOS it is started via
+# `open`, so the browser is not a child process of this script.
+browser_running() { pgrep -f "$BROWSER_PROFILE" >/dev/null 2>&1; }
 cleanup() {
   [[ "$CLEANED" == "1" ]] && return 0
   CLEANED=1
   echo ""
-  if [[ -n "$BROWSER_PID" ]]; then
-    pkill -P "$BROWSER_PID" >/dev/null 2>&1 || true
-    kill "$BROWSER_PID" >/dev/null 2>&1 || true
+  if [[ -n "$BROWSER_PROFILE" ]]; then
+    # Only delete the profile once the browser has let go of it.
+    pkill -f "$BROWSER_PROFILE" >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5; do browser_running || break; sleep 1; done
+    rm -rf "$BROWSER_PROFILE"
   fi
-  [[ -n "$BROWSER_PROFILE" ]] && rm -rf "$BROWSER_PROFILE"
   if [[ -n "$SSM_PID" ]]; then
     pkill -P "$SSM_PID" >/dev/null 2>&1 || true
     kill "$SSM_PID" >/dev/null 2>&1 || true
@@ -202,12 +205,24 @@ echo ""
 OPEN_URL="${ACTIVE_URL:-${URL_LIST[0]}}/admin/"
 BROWSER_PROFILE=$(mktemp -d "${TMPDIR:-/tmp}/mq-console-browser.XXXXXX")
 
-FIREFOX_BIN="/Applications/Firefox.app/Contents/MacOS/firefox"
-[[ -x "$FIREFOX_BIN" ]] || FIREFOX_BIN=$(command -v firefox || true)
-CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-[[ -x "$CHROME_BIN" ]] || CHROME_BIN=$(command -v google-chrome || command -v chromium || true)
+# On macOS launch through LaunchServices (`open`): a browser binary started
+# directly from the terminal cannot create its profile ("Profile Missing").
+FIREFOX_CMD=()
+if [[ -d /Applications/Firefox.app ]]; then
+  FIREFOX_CMD=(open -na /Applications/Firefox.app --args)
+elif command -v firefox >/dev/null 2>&1; then
+  FIREFOX_CMD=(firefox)
+fi
+CHROME_CMD=()
+if [[ -d "/Applications/Google Chrome.app" ]]; then
+  CHROME_CMD=(open -na "/Applications/Google Chrome.app" --args)
+elif command -v google-chrome >/dev/null 2>&1; then
+  CHROME_CMD=(google-chrome)
+elif command -v chromium >/dev/null 2>&1; then
+  CHROME_CMD=(chromium)
+fi
 
-if [[ -n "$FIREFOX_BIN" ]]; then
+if (( ${#FIREFOX_CMD[@]} )); then
   cat > "${BROWSER_PROFILE}/user.js" <<EOF
 user_pref("network.proxy.type", 1);
 user_pref("network.proxy.http", "localhost");
@@ -221,17 +236,17 @@ user_pref("browser.startup.homepage_override.mstone", "ignore");
 user_pref("datareporting.policy.dataSubmissionEnabled", false);
 user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);
 EOF
-  "$FIREFOX_BIN" -profile "$BROWSER_PROFILE" -no-remote -new-instance "$OPEN_URL" >/dev/null 2>&1 &
-  BROWSER_PID=$!
+  "${FIREFOX_CMD[@]}" -profile "$BROWSER_PROFILE" -no-remote -new-instance "$OPEN_URL" >/dev/null 2>&1 &
   echo "  Opened Firefox (isolated profile, proxy ${PROXY})."
-elif [[ -n "$CHROME_BIN" ]]; then
-  "$CHROME_BIN" --user-data-dir="$BROWSER_PROFILE" --proxy-server="$PROXY" \
+elif (( ${#CHROME_CMD[@]} )); then
+  "${CHROME_CMD[@]}" --user-data-dir="$BROWSER_PROFILE" --proxy-server="$PROXY" \
     --no-first-run --no-default-browser-check "$OPEN_URL" >/dev/null 2>&1 &
-  BROWSER_PID=$!
   echo "  Opened Chrome (isolated profile, proxy ${PROXY})."
 else
   echo "  No Firefox or Chrome found. Set your browser HTTP/HTTPS proxy to"
   echo "  ${PROXY} and open ${OPEN_URL}"
+  rm -rf "$BROWSER_PROFILE"
+  BROWSER_PROFILE=""
 fi
 
 echo ""
@@ -247,10 +262,22 @@ echo "================================================================"
 echo ""
 
 # Stay up until the tunnel dies or the browser is closed (macOS bash lacks wait -n).
+# The browser only counts as closed after it was seen running and has then been
+# gone for a few seconds, so a relaunch during startup does not end the session.
+SEEN=0
+GONE=0
 while kill -0 "$SSM_PID" 2>/dev/null; do
-  if [[ -n "$BROWSER_PID" ]] && ! kill -0 "$BROWSER_PID" 2>/dev/null; then
-    echo "Browser closed."
-    break
+  if [[ -n "$BROWSER_PROFILE" ]]; then
+    if browser_running; then
+      SEEN=1
+      GONE=0
+    elif [[ "$SEEN" == "1" ]]; then
+      GONE=$((GONE + 1))
+      if (( GONE >= 5 )); then
+        echo "Browser closed."
+        break
+      fi
+    fi
   fi
   sleep 1
 done
