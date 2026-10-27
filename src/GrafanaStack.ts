@@ -138,10 +138,6 @@ export class GrafanaStack extends Stack {
         '/var/lib/grafana/provisioning/alerting/mule-runtime-errors-template.yaml',
         fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/mule-runtime-errors-template.yaml'), 'utf8'),
       ],
-      [
-        '/var/lib/grafana/provisioning/alerting/delete-devops-contact-point.yaml',
-        fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/delete-devops-contact-point.yaml'), 'utf8'),
-      ],
       ...dashboards,
       [
         '/var/lib/grafana/provisioning/datasources/loki.yaml',

@@ -1,7 +1,0 @@
-apiVersion: 1
-
-# The DevOps contact point used to be provisioned from here, which locked it
-# in the UI. Contact points are now managed in Grafana; see the README.
-deleteContactPoints:
-  - orgId: 1
-    uid: mule-runtime-errors-email
