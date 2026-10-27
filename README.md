@@ -152,10 +152,12 @@ The alert rules pick no contact point: every alert goes through Grafana's
 notification policy tree. That tree, the functional administrators' contact
 points, and all users, roles, teams and folder permissions live in Grafana's
 database on EFS and are managed in the UI. Adding someone needs no deploy and
-puts no personal data in this repository. Every email contact point takes the
-subject and message of the DevOps one, with *Single email* and *Disable
-resolved message* on: a request's errors stop once the circuit breaker halts
-its retries, so a resolved alert says nothing. Grafana sends
+puts no personal data in this repository. Only the mail template
+`mule-runtime-errors` comes from here; every email contact point, DevOps
+included, sets *Subject* to `{{ template "mule-runtime-errors.subject" . }}`,
+*Message* to `{{ template "mule-runtime-errors.message" . }}`, *Single email*
+on and *Disable resolved message* on (a request's errors stop once the circuit
+breaker halts its retries, so a resolved alert says nothing). Grafana sends
 mail through SES SMTP, with the credentials that
 aws-ses-management stores in `/ses/smtp-credentials/mule-infra-<env>`; its
 `password` field has to be derived from the access key by hand once.
@@ -165,7 +167,7 @@ it. Until then alerts go to Grafana's default contact point, which mails nobody.
 In *Alerting > Notification policies*:
 
 1. **DevOps contact point**: an email contact point `devops-email` with the
-   DevOps addresses.
+   DevOps addresses and the template settings above.
 2. **Default policy**: contact point `devops-email`, group by
    `grafana_folder`, `alertname`, `correlationId` and `applicationName`. That
    keeps one mail per failing request, and one per application for errors
@@ -178,8 +180,8 @@ To add a functional administrator:
 
 1. They log in once with SSO and arrive as Viewer. Roles are managed in
    Grafana, not synced from Keycloak.
-2. Create an email contact point with the address they log in with, set up
-   like the DevOps one.
+2. Create an email contact point with the address they log in with and the
+   template settings above.
 3. Add a child policy below the DevOps one: matcher
    `applicationName =~ app-a|app-b` for their applications, their contact
    point, *Continue matching* on. `applicationName` is the entrypoint of the

@@ -92,8 +92,11 @@ describe('GrafanaStack', () => {
 
     const template = Template.fromStack(grafanaStack);
     const rule = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml');
+    const mailTemplate = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/mule-runtime-errors-template.yaml');
 
     expect(rule).toContain('var-correlationId={{ $labels.correlationId | urlquery }}');
+    // The mail builds the link from Grafana's own base URL plus the annotation.
+    expect(mailTemplate).toContain('{{ $$grafana }}{{ index .Annotations "dashboard_path" }}');
   });
 
   test('the rules leave routing to the notification policy tree', () => {
