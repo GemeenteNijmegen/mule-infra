@@ -16,11 +16,11 @@ templates:
 
       {{ define "mule-runtime-errors.message" -}}
       {{- /* .ExternalURL (GF_SERVER_ROOT_URL) is captured up here because the
-      per-alert scope inside the range cannot see it. $$ escapes Grafana's env
-      var interpolation, which would otherwise blank $grafana. The dashboard
-      window runs from 15m before the alert started (the rule looks back 10m)
+      per-alert scope inside the range cannot see it. Plain $, not $$: unlike
+      contact point settings, templates get no env var interpolation. The
+      dashboard window runs from 15m before the alert started (the rule looks back 10m)
       to 2h after; Add takes nanoseconds. */ -}}
-      {{ $$grafana := .ExternalURL -}}
+      {{ $grafana := .ExternalURL -}}
       {{ range .Alerts -}}
       {{ if index .Labels "applicationName" -}}
       {{ index .Annotations "description" }}
@@ -33,7 +33,7 @@ templates:
       {{ else -}}
       Bekijk in Grafana - het dashboard gefilterd op deze applicatie:
       {{ end -}}
-      {{ $$grafana }}{{ index .Annotations "dashboard_path" }}&from={{ (.StartsAt.Add -900000000000).UnixMilli }}&to={{ (.StartsAt.Add 7200000000000).UnixMilli }}
+      {{ $grafana }}{{ index .Annotations "dashboard_path" }}&from={{ (.StartsAt.Add -900000000000).UnixMilli }}&to={{ (.StartsAt.Add 7200000000000).UnixMilli }}
       {{ else -}}
       Grafana kon de Mule runtime alert niet evalueren ({{ index .Labels "alertname" }}).
       Loki is waarschijnlijk onbereikbaar, dus Mule errors worden op dit moment NIET gedetecteerd.

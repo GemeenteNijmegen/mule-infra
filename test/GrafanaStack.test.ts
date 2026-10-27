@@ -96,7 +96,7 @@ describe('GrafanaStack', () => {
 
     expect(rule).toContain('var-correlationId={{ $labels.correlationId | urlquery }}');
     // The mail builds the link from Grafana's own base URL plus the annotation.
-    expect(mailTemplate).toContain('{{ $$grafana }}{{ index .Annotations "dashboard_path" }}');
+    expect(mailTemplate).toContain('{{ $grafana }}{{ index .Annotations "dashboard_path" }}');
   });
 
   test('the rules leave routing to the notification policy tree', () => {
