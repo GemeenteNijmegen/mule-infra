@@ -52,18 +52,6 @@ describe('GrafanaStack', () => {
     template.hasResourceProperties('AWS::ECS::TaskDefinition', {
       ContainerDefinitions: Match.arrayWith([
         Match.objectLike({
-          Command: Match.arrayWith([
-            Match.stringLikeRegexp('/var/lib/grafana/provisioning/alerting/email-contact-point.yaml'),
-          ]),
-        }),
-      ]),
-    });
-
-    expect(provisionedFile(template, '/var/lib/grafana/provisioning/alerting/email-contact-point.yaml'))
-      .toContain('addresses: "e.kuijs@nijmegen.nl"');
-    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
-      ContainerDefinitions: Match.arrayWith([
-        Match.objectLike({
           Environment: Match.arrayWith([{ Name: 'GF_SMTP_HOST', Value: 'email-smtp.eu-central-1.amazonaws.com:587' }]),
           Secrets: Match.arrayWith([Match.objectLike({ Name: 'GF_SMTP_PASSWORD' })]),
         }),
@@ -104,11 +92,11 @@ describe('GrafanaStack', () => {
 
     const template = Template.fromStack(grafanaStack);
     const rule = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/mule-runtime-errors.yaml');
-    const contactPoint = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/email-contact-point.yaml');
+    const mailTemplate = provisionedFile(template, '/var/lib/grafana/provisioning/alerting/mule-runtime-errors-template.yaml');
 
     expect(rule).toContain('var-correlationId={{ $labels.correlationId | urlquery }}');
     // The mail builds the link from Grafana's own base URL plus the annotation.
-    expect(contactPoint).toContain('{{ $$grafana }}{{ index .Annotations "dashboard_path" }}');
+    expect(mailTemplate).toContain('{{ $grafana }}{{ index .Annotations "dashboard_path" }}');
   });
 
   test('the rules leave routing to the notification policy tree', () => {

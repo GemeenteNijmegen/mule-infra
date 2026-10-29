@@ -99,7 +99,6 @@ export class GrafanaStack extends Stack {
     const grafanaConfigRoot = path.join(__dirname, 'grafana');
     const renderGrafanaConfig = (contents: string) => contents
       .replace(/__AWS_REGION__/g, this.region)
-      .replace(/__DEVOPS_EMAILS__/g, Statics.grafanaDevopsEmails.join(';'))
       .replace(/__LOKI_URL__/g, lokiUrl)
       .replace(/__OAUTH_CLIENT_ID__/g, grafanaOAuthClientId)
       .replace(/__OAUTH_PROVIDER_DOMAIN__/g, grafanaOAuthProviderDomain)
@@ -136,10 +135,8 @@ export class GrafanaStack extends Stack {
         ),
       ],
       [
-        '/var/lib/grafana/provisioning/alerting/email-contact-point.yaml',
-        renderGrafanaConfig(
-          fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/email-contact-point.yaml'), 'utf8'),
-        ),
+        '/var/lib/grafana/provisioning/alerting/mule-runtime-errors-template.yaml',
+        fs.readFileSync(path.join(grafanaConfigRoot, 'provisioning/alerting/mule-runtime-errors-template.yaml'), 'utf8'),
       ],
       ...dashboards,
       [
