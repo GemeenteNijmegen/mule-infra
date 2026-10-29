@@ -225,6 +225,8 @@ export class MuleRuntimeStack extends Stack {
       'oosterbierum': '10.8.109.37',
       'oudwoude': '10.8.107.95',
       'data': '192.168.10.20',
+      // Shared by Test and Production
+      'niebert': '10.8.109.99',
     };
 
     Object.entries(karelstadHosts).forEach(([recordName, ip]) => {
@@ -233,6 +235,18 @@ export class MuleRuntimeStack extends Stack {
         recordName,
         target: RecordTarget.fromIpAddresses(ip),
       });
+    });
+
+    // Mirrors Karelstad's own DNS: the domain resolves to every domain
+    // controller and karelstad is an alias for it.
+    new ARecord(this, 'KarelstadRecord-apex', {
+      zone: karelstadPrivateZone,
+      target: RecordTarget.fromIpAddresses('10.17.2.150', '10.17.2.151', '10.17.2.152', '10.17.2.153'),
+    });
+    new CnameRecord(this, 'KarelstadRecord-karelstad', {
+      zone: karelstadPrivateZone,
+      recordName: 'karelstad',
+      domainName: karelstadPrivateZone.zoneName,
     });
 
     // One shared log group and stream for the Mule application logs, written
