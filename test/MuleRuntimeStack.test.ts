@@ -83,6 +83,27 @@ describe('MuleRuntimeStack taskCount logic', () => {
     });
   });
 
+  test('mounts one shared EFS access point in every task', () => {
+    const app = new App();
+    const stack = new MuleRuntimeStack(app, 'MuleRuntimeStackSharedEfs', {
+      ...defaultProps,
+      configuration: { ...defaultProps.configuration, taskCount: 2 },
+    });
+
+    const template = Template.fromStack(stack);
+
+    const [sharedAccessPointId] = Object.entries(template.findResources('AWS::EFS::AccessPoint'))
+      .find(([, accessPoint]) => accessPoint.Properties.RootDirectory.Path === '/mule-shared')!;
+    const taskDefinitions = Object.values(template.findResources('AWS::ECS::TaskDefinition'));
+    expect(taskDefinitions).toHaveLength(2);
+    taskDefinitions.forEach(taskDefinition => {
+      const volume = taskDefinition.Properties.Volumes.find((v: any) =>
+        v.EFSVolumeConfiguration.AuthorizationConfig.AccessPointId.Ref === sharedAccessPointId);
+      expect(taskDefinition.Properties.ContainerDefinitions[0].MountPoints).toContainEqual(
+        expect.objectContaining({ ContainerPath: '/efs-shared', SourceVolume: volume.Name }));
+    });
+  });
+
   test('lets the task role write to the application log group', () => {
     const app = new App();
     const stack = new MuleRuntimeStack(app, 'MuleRuntimeStackAppLogsIam', { ...defaultProps });

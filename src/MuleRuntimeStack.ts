@@ -262,6 +262,23 @@ export class MuleRuntimeStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
+    // One directory every task mounts at /efs-shared, for files the Mule apps
+    // must see from any instance. The per-task access points below cannot
+    // reach it, as an access point roots the mount at its own path.
+    const sharedAccessPoint = new efs.AccessPoint(this, 'MuleEfsSharedAccessPoint', {
+      fileSystem,
+      path: '/mule-shared',
+      createAcl: {
+        ownerUid: '1000',
+        ownerGid: '1000',
+        permissions: '755',
+      },
+      posixUser: {
+        uid: '1000',
+        gid: '1000',
+      },
+    });
+
     const loadBalancerTargets = [];
     let previousService: ecs.FargateService | undefined;
 
@@ -311,6 +328,18 @@ export class MuleRuntimeStack extends Stack {
         },
       });
 
+      taskDefinition.addVolume({
+        name: 'mule-shared-efs-volume',
+        efsVolumeConfiguration: {
+          fileSystemId: fileSystem.fileSystemId,
+          transitEncryption: 'ENABLED',
+          authorizationConfig: {
+            accessPointId: sharedAccessPoint.accessPointId,
+            iam: 'ENABLED',
+          },
+        },
+      });
+
       taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
         actions: [
           'elasticfilesystem:ClientMount',
@@ -320,7 +349,7 @@ export class MuleRuntimeStack extends Stack {
         resources: [fileSystem.fileSystemArn],
         conditions: {
           StringEquals: {
-            'elasticfilesystem:AccessPointArn': accessPoint.accessPointArn,
+            'elasticfilesystem:AccessPointArn': [accessPoint.accessPointArn, sharedAccessPoint.accessPointArn],
           },
         },
       }));
@@ -394,6 +423,10 @@ export class MuleRuntimeStack extends Stack {
         containerPath: '/efs-data',
         readOnly: false,
         sourceVolume: 'mule-efs-volume',
+      }, {
+        containerPath: '/efs-shared',
+        readOnly: false,
+        sourceVolume: 'mule-shared-efs-volume',
       });
 
       const ecsService = new ecs.FargateService(this, `Service${i}`, {
