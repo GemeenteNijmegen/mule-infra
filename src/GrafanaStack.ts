@@ -98,7 +98,6 @@ export class GrafanaStack extends Stack {
 
     const grafanaConfigRoot = path.join(__dirname, 'grafana');
     const renderGrafanaConfig = (contents: string) => contents
-      .replace(/__AWS_REGION__/g, this.region)
       .replace(/__LOKI_URL__/g, lokiUrl)
       .replace(/__OAUTH_CLIENT_ID__/g, grafanaOAuthClientId)
       .replace(/__OAUTH_PROVIDER_DOMAIN__/g, grafanaOAuthProviderDomain)
