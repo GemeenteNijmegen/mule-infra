@@ -183,6 +183,18 @@ describe('GrafanaStack', () => {
 
     expect(commandText).toContain('/var/lib/grafana/provisioning/datasources/loki.yaml');
     expect(commandText).not.toContain('/var/lib/grafana/provisioning/datasources/cloudwatch.yaml');
+
+    // The Loki image has no shell: an init container writes its config.
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Image: Match.stringLikeRegexp('grafana/loki'),
+          Command: ['-config.file=/etc/loki-config/loki-config.yaml'],
+          HealthCheck: Match.objectLike({ Command: ['CMD', '/usr/bin/loki', '-health'] }),
+          DependsOn: [Match.objectLike({ Condition: 'SUCCESS' })],
+        }),
+      ]),
+    });
   });
 
   test('keeps the Grafana database on EFS and replaces the task without overlap', () => {
