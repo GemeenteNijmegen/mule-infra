@@ -1,7 +1,7 @@
 import * as zlib from 'zlib';
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { Configuration } from '../src/Configuration';
+import { Configuration, getConfiguration } from '../src/Configuration';
 import { GrafanaStack } from '../src/GrafanaStack';
 import { MuleRuntimeStack } from '../src/MuleRuntimeStack';
 
@@ -19,6 +19,7 @@ describe('GrafanaStack', () => {
       maxHealthyPercent: 100,
       proxyEnabled: true,
       mqHostInstanceType: 'mq.t3.micro',
+      containerImages: getConfiguration('development').containerImages,
       grafanaOAuthClientId: 'grafana-test',
       grafanaOAuthProviderDomain: 'auth.example.com',
       grafanaOAuthRealm: 'mule',

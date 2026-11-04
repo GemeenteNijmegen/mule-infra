@@ -153,7 +153,7 @@ export class GrafanaStack extends Stack {
       'exec /run.sh',
     ].join('\n');
     const container = taskDefinition.addContainer('GrafanaContainer', {
-      image: ecs.ContainerImage.fromRegistry(Statics.grafanaDockerImage),
+      image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.grafanaImage),
       user: '472',
       entryPoint: ['/bin/sh', '-c'],
       command: [provisioningScript],
@@ -382,7 +382,7 @@ export class GrafanaStack extends Stack {
     });
     bucket.grantReadWrite(taskDefinition.taskRole);
     taskDefinition.addContainer('LokiContainer', {
-      image: ecs.ContainerImage.fromRegistry(Statics.lokiDockerImage),
+      image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.lokiImage),
       entryPoint: ['/bin/sh', '-c'],
       command: [command],
       environment: {
@@ -411,12 +411,12 @@ export class GrafanaStack extends Stack {
       `echo '${Buffer.from(alloyConfig).toString('base64')}' | base64 -d > /tmp/config.alloy`,
       // otelcol.receiver.awscloudwatch is an experimental Alloy component, so it
       // only loads with --stability.level=experimental. The image tag is pinned
-      // in Statics, so a breaking change can't land until we bump it on purpose.
+      // per branch in Configuration, so a breaking change can't land until we bump it on purpose.
       'exec alloy run /tmp/config.alloy --stability.level=experimental'
       + ' --disable-reporting --storage.path=/tmp/alloy --server.http.listen-addr=127.0.0.1:12345',
     ].join('\n');
     taskDefinition.addContainer('LokiAlloyContainer', {
-      image: ecs.ContainerImage.fromRegistry(Statics.alloyDockerImage),
+      image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.alloyImage),
       // A broken Alloy config or a CloudWatch outage must not take Loki down.
       essential: false,
       entryPoint: ['/bin/sh', '-c'],

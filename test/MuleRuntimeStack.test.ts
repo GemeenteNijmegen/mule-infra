@@ -1,6 +1,6 @@
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { Configuration } from '../src/Configuration';
+import { Configuration, getConfiguration } from '../src/Configuration';
 import { MuleRuntimeStack } from '../src/MuleRuntimeStack';
 
 describe('MuleRuntimeStack taskCount logic', () => {
@@ -18,6 +18,7 @@ describe('MuleRuntimeStack taskCount logic', () => {
       minHealthyPercent: 50,
       maxHealthyPercent: 200,
       mqHostInstanceType: 'mq.m5.large',
+      containerImages: getConfiguration('development').containerImages,
     } as unknown as Configuration,
   };
 

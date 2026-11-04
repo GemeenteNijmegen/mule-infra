@@ -109,6 +109,22 @@ export interface Configuration {
    * mq.m5.large is the smallest non-burstable option.
    */
   mqHostInstanceType: string;
+
+  /**
+   * Container image pins, set per branch so an image upgrade can be rolled
+   * out on development and acceptance without blocking other releases.
+   */
+  containerImages: ContainerImages;
+}
+
+export interface ContainerImages {
+  /**
+   * Tag (commit hash) of the Mule runtime image in the mule-docker-image ECR repository
+   */
+  muleImageHash: string;
+  grafanaImage: string;
+  lokiImage: string;
+  alloyImage: string;
 }
 
 const configurations: Configuration[] = [
@@ -129,6 +145,12 @@ const configurations: Configuration[] = [
     grafanaOAuthRealm: 'grafana-mule-dev',
     grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-dev',
     mqHostInstanceType: 'mq.t3.micro',
+    containerImages: {
+      muleImageHash: '709d144f846bf7f35ed83a33533db854ffc1a8b3',
+      grafanaImage: 'grafana/grafana:13.1.3',
+      lokiImage: 'grafana/loki:3.5.3',
+      alloyImage: 'grafana/alloy:v1.19.2',
+    },
     cnames: {
       '_D1D3DA83D42898AF7DCC082754D0677D.data': '2DFCA4BBF3A2E3E9309B552F57876D8C.9633141E74B7095EB9444AD755627AFF.sectigo.com', //cert for on-prem layer7 auth (dev)
     },
@@ -150,6 +172,12 @@ const configurations: Configuration[] = [
     grafanaOAuthRealm: 'grafana-mule-accp',
     grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-accp',
     mqHostInstanceType: 'mq.t3.micro',
+    containerImages: {
+      muleImageHash: '709d144f846bf7f35ed83a33533db854ffc1a8b3',
+      grafanaImage: 'grafana/grafana:13.1.3',
+      lokiImage: 'grafana/loki:3.5.3',
+      alloyImage: 'grafana/alloy:v1.19.2',
+    },
     cnames: {
       '_0B09FEE32BBC128264F775BF32511736.data': '447C490326AFABB4B06FAF37F45BA0E1.115767F454ECB8FACEE90B42FADF56A6.sectigo.com', //cert for on-prem layer7 auth (accp)
     },
@@ -171,6 +199,12 @@ const configurations: Configuration[] = [
     grafanaOAuthRealm: 'grafana-mule-prod',
     grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-prod',
     mqHostInstanceType: 'mq.m5.large',
+    containerImages: {
+      muleImageHash: '709d144f846bf7f35ed83a33533db854ffc1a8b3',
+      grafanaImage: 'grafana/grafana:13.1.3',
+      lokiImage: 'grafana/loki:3.5.3',
+      alloyImage: 'grafana/alloy:v1.19.2',
+    },
     cnames: {
       '_1DC27ABD6F2109D11C591AC526AF32E6.data': '4EE21CC4381A02B97A207FBD9D8829E5.6D9C8F9FE4391645761530BE296B0498.sectigo.com', //cert for on-prem layer7 auth (prod)
     },

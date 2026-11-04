@@ -355,7 +355,7 @@ export class MuleRuntimeStack extends Stack {
       }));
 
       const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, Statics.muleDockerImageHash),
+        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, props.configuration.containerImages.muleImageHash),
         logging: ecs.LogDrivers.awsLogs({
           streamPrefix: `mule-runtime-${i}`,
           logGroup,
