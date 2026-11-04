@@ -8,7 +8,7 @@ It pulls the docker image from ECR from the gn-build account, and runs it in ECS
 
 The repo with the docker image is [here](https://github.com/GemeenteNijmegen/mule-docker-image).
 
-To update the docker image version in `mule-infra`, update the `muleDockerImageHash` in `src/Statics.ts`.
+To update the docker image version in `mule-infra`, update `containerImages.muleImageHash` for the relevant branch in `src/Configuration.ts`.
 
 ## Manual Pre-requisites
 
