@@ -147,9 +147,9 @@ const configurations: Configuration[] = [
     mqHostInstanceType: 'mq.t3.micro',
     containerImages: {
       muleImageHash: 'f0b7590ec8f1255e1f61ddfe7efcd9310fa02ddd',
-      grafanaImage: 'grafana/grafana:13.1.3',
+      grafanaImage: 'grafana/grafana:13.3.0',
       lokiImage: 'grafana/loki:3.5.3',
-      alloyImage: 'grafana/alloy:v1.19.2',
+      alloyImage: 'grafana/alloy:v1.21.3',
     },
     cnames: {
       '_D1D3DA83D42898AF7DCC082754D0677D.data': '2DFCA4BBF3A2E3E9309B552F57876D8C.9633141E74B7095EB9444AD755627AFF.sectigo.com', //cert for on-prem layer7 auth (dev)
