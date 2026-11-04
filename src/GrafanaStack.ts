@@ -359,13 +359,12 @@ export class GrafanaStack extends Stack {
     // container fill them in at start-up from environment variables, whose
     // values CloudFormation does resolve.
     const config = fs.readFileSync(path.join(__dirname, 'grafana/loki/loki-config.yaml'), 'utf8');
+    const configDir = '/etc/loki-config';
     const command = [
       'set -eu',
-      'mkdir -p /etc/loki',
       `echo '${Buffer.from(config).toString('base64')}' | base64 -d`
       + ' | sed -e "s|__LOKI_BUCKET__|$LOKI_BUCKET|g" -e "s|__AWS_REGION__|$AWS_REGION|g"'
-      + ' > /etc/loki/loki-config.yaml',
-      'exec /usr/bin/loki -config.file=/etc/loki/loki-config.yaml',
+      + ` > ${configDir}/loki-config.yaml`,
     ].join('\n');
 
     const logGroup = new logs.LogGroup(this, 'LokiLogGroup', {
@@ -381,23 +380,43 @@ export class GrafanaStack extends Stack {
       memoryLimitMiB: 2048,
     });
     bucket.grantReadWrite(taskDefinition.taskRole);
-    taskDefinition.addContainer('LokiContainer', {
-      image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.lokiImage),
+
+    // The Loki image is distroless (no shell since 3.5.8), so a short-lived init
+    // container writes the config to a shared volume. It reuses the Alloy image,
+    // which is already pinned and pulled for this task and does have a shell.
+    taskDefinition.addVolume({ name: 'loki-config' });
+    const configContainer = taskDefinition.addContainer('LokiConfigContainer', {
+      image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.alloyImage),
+      essential: false,
       entryPoint: ['/bin/sh', '-c'],
       command: [command],
       environment: {
         LOKI_BUCKET: bucket.bucketName,
         AWS_REGION: this.region,
       },
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'loki-config', logGroup }),
+    });
+    configContainer.addMountPoints({ sourceVolume: 'loki-config', containerPath: configDir, readOnly: false });
+
+    const lokiContainer = taskDefinition.addContainer('LokiContainer', {
+      image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.lokiImage),
+      command: [`-config.file=${configDir}/loki-config.yaml`],
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'loki', logGroup }),
       healthCheck: {
-        command: ['CMD-SHELL', 'wget -q -O - http://localhost:3100/ready || exit 1'],
+        // Loki's built-in check of its own /ready endpoint; the image has no wget.
+        command: ['CMD', '/usr/bin/loki', '-health'],
         interval: Duration.seconds(30),
         timeout: Duration.seconds(5),
         retries: 3,
         startPeriod: Duration.seconds(90),
       },
-    }).addPortMappings({ containerPort: 3100, protocol: ecs.Protocol.TCP });
+    });
+    lokiContainer.addPortMappings({ containerPort: 3100, protocol: ecs.Protocol.TCP });
+    lokiContainer.addMountPoints({ sourceVolume: 'loki-config', containerPath: configDir, readOnly: true });
+    lokiContainer.addContainerDependencies({
+      container: configContainer,
+      condition: ecs.ContainerDependencyCondition.SUCCESS,
+    });
 
     // Alloy rides in the Loki task as a non-essential sidecar: it pulls the Mule
     // application logs from CloudWatch and pushes them to Loki over

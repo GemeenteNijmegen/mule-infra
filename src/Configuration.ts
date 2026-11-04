@@ -148,7 +148,7 @@ const configurations: Configuration[] = [
     containerImages: {
       muleImageHash: 'f0b7590ec8f1255e1f61ddfe7efcd9310fa02ddd',
       grafanaImage: 'grafana/grafana:13.3.0',
-      lokiImage: 'grafana/loki:3.5.3',
+      lokiImage: 'grafana/loki:3.7.9',
       alloyImage: 'grafana/alloy:v1.21.3',
     },
     cnames: {
@@ -174,9 +174,9 @@ const configurations: Configuration[] = [
     mqHostInstanceType: 'mq.t3.micro',
     containerImages: {
       muleImageHash: '709d144f846bf7f35ed83a33533db854ffc1a8b3',
-      grafanaImage: 'grafana/grafana:13.1.3',
-      lokiImage: 'grafana/loki:3.5.3',
-      alloyImage: 'grafana/alloy:v1.19.2',
+      grafanaImage: 'grafana/grafana:13.3.0',
+      lokiImage: 'grafana/loki:3.7.9',
+      alloyImage: 'grafana/alloy:v1.21.3',
     },
     cnames: {
       '_0B09FEE32BBC128264F775BF32511736.data': '447C490326AFABB4B06FAF37F45BA0E1.115767F454ECB8FACEE90B42FADF56A6.sectigo.com', //cert for on-prem layer7 auth (accp)
@@ -201,9 +201,9 @@ const configurations: Configuration[] = [
     mqHostInstanceType: 'mq.m5.large',
     containerImages: {
       muleImageHash: '709d144f846bf7f35ed83a33533db854ffc1a8b3',
-      grafanaImage: 'grafana/grafana:13.1.3',
-      lokiImage: 'grafana/loki:3.5.3',
-      alloyImage: 'grafana/alloy:v1.19.2',
+      grafanaImage: 'grafana/grafana:13.3.0',
+      lokiImage: 'grafana/loki:3.7.9',
+      alloyImage: 'grafana/alloy:v1.21.3',
     },
     cnames: {
       '_1DC27ABD6F2109D11C591AC526AF32E6.data': '4EE21CC4381A02B97A207FBD9D8829E5.6D9C8F9FE4391645761530BE296B0498.sectigo.com', //cert for on-prem layer7 auth (prod)
