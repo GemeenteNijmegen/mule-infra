@@ -280,6 +280,11 @@ export class MuleRuntimeStack extends Stack {
       },
     });
 
+    const nginxPort = 8080;
+    const nginxMemoryLimitMiB = 256;
+    const nginxConfig = fs.readFileSync(path.join(__dirname, 'nginx/nginx.conf'), 'utf8')
+      .replace('__CLIENT_CERT_CN__', props.configuration.clientCertificateCommonName?.replace(/\./g, '\\.') ?? '.*');
+
     const loadBalancerTargets = [];
     let previousService: ecs.FargateService | undefined;
 
@@ -361,7 +366,8 @@ export class MuleRuntimeStack extends Stack {
           streamPrefix: `mule-runtime-${i}`,
           logGroup,
         }),
-        memoryLimitMiB: props.configuration.memoryLimitMiB,
+        // Container limits may not add up to more than the task's memory.
+        memoryLimitMiB: props.configuration.memoryLimitMiB - nginxMemoryLimitMiB,
         environment: {
           SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
           SERVER_NAME: `mule-${props.configuration.branchName.toLowerCase()}-${i}`,
@@ -430,6 +436,27 @@ export class MuleRuntimeStack extends Stack {
         sourceVolume: 'mule-shared-efs-volume',
       });
 
+      // Containers in a Fargate task share localhost, so nginx cannot also use
+      // 8081. The load balancer only reaches this port, not Mule's.
+      const nginxContainer = taskDefinition.addContainer('NginxContainer', {
+        image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.nginxImage),
+        memoryLimitMiB: nginxMemoryLimitMiB,
+        entryPoint: ['/bin/sh', '-c'],
+        command: [[
+          'set -eu',
+          `echo '${Buffer.from(nginxConfig).toString('base64')}' | base64 -d > /tmp/nginx.conf`,
+          'exec nginx -c /tmp/nginx.conf -g "daemon off;"',
+        ].join('\n')],
+        logging: ecs.LogDrivers.awsLogs({
+          streamPrefix: `nginx-${i}`,
+          logGroup,
+        }),
+      });
+      nginxContainer.addPortMappings({
+        containerPort: nginxPort,
+        protocol: ecs.Protocol.TCP,
+      });
+
       const ecsService = new ecs.FargateService(this, `Service${i}`, {
         cluster: this.cluster,
         taskDefinition,
@@ -457,8 +484,8 @@ export class MuleRuntimeStack extends Stack {
       fileSystem.connections.allowDefaultPortFrom(ecsService.connections);
 
       loadBalancerTargets.push(ecsService.loadBalancerTarget({
-        containerName: 'MuleRuntimeContainer',
-        containerPort: 8081,
+        containerName: 'NginxContainer',
+        containerPort: nginxPort,
       }));
     }
 

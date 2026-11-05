@@ -19,6 +19,7 @@ describe('ProxyStack', () => {
       proxyEnabled: true,
       mqHostInstanceType: 'mq.t3.micro',
       containerImages: getConfiguration('development').containerImages,
+      clientCertificateCommonName: 'data.nijmegen.nl',
     } as unknown as Configuration,
   };
 

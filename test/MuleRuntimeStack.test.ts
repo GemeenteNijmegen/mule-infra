@@ -19,6 +19,7 @@ describe('MuleRuntimeStack taskCount logic', () => {
       maxHealthyPercent: 200,
       mqHostInstanceType: 'mq.m5.large',
       containerImages: getConfiguration('development').containerImages,
+      clientCertificateCommonName: 'data.nijmegen.nl',
     } as unknown as Configuration,
   };
 
@@ -212,5 +213,69 @@ describe('MuleRuntimeStack taskCount logic', () => {
     template.hasResourceProperties('AWS::Logs::DeliverySource', { LogType: 'ALB_ACCESS_LOGS' });
     template.hasResourceProperties('AWS::Logs::DeliverySource', { LogType: 'ALB_CONNECTION_LOGS' });
     template.resourceCountIs('AWS::Logs::Delivery', 2);
+  });
+
+  describe('nginx in front of Mule', () => {
+    const template = Template.fromStack(new MuleRuntimeStack(new App(), 'MuleRuntimeStackNginx', { ...defaultProps }));
+    const containers: any[] = Object.values(template.findResources('AWS::ECS::TaskDefinition'))[0].Properties.ContainerDefinitions;
+    const nginx = containers.find(container => container.Name === 'NginxContainer');
+    const decodeConfig = (command: string) => Buffer.from(command.match(/echo '(.+)' \| base64/)![1], 'base64').toString();
+    const allowedPattern = (config: string) => new RegExp(config.match(/"~(.+)" 0;/)![1]);
+    const config = decodeConfig(nginx.Command[0]);
+
+    test('is the only load balancer target', () => {
+      const service = Object.values(template.findResources('AWS::ECS::Service'))[0];
+      expect(service.Properties.LoadBalancers).toEqual([
+        expect.objectContaining({ ContainerName: 'NginxContainer', ContainerPort: 8080 }),
+      ]);
+      const ingressPorts = Object.values(template.findResources('AWS::EC2::SecurityGroupIngress'))
+        .map(rule => rule.Properties.FromPort);
+      expect(ingressPorts).toContain(8080);
+      expect(ingressPorts).not.toContain(8081);
+    });
+
+    test('fits in the task memory together with Mule', () => {
+      expect(containers.reduce((total, container) => total + container.Memory, 0)).toBe(2048);
+    });
+
+    test.each([
+      ['CN=data.nijmegen.nl,O=Gemeente Nijmegen,C=NL', true],
+      ['C=NL,O=Gemeente Nijmegen,CN=data.nijmegen.nl', true],
+      ['CN=data.nijmegen.nl', true],
+      ['CN=data-test.nijmegen.nl,C=NL', false],
+      ['CN=data.nijmegen.nl.evil.com,C=NL', false],
+      ['CN=xdata.nijmegen.nl,C=NL', false],
+      ['CN=dataxnijmegen.nl,C=NL', false],
+      ['CN=evil,O=data.nijmegen.nl', false],
+      ['O=evil\\,CN=data.nijmegen.nl,C=NL', false],
+      ['O=Foo\\, Inc,CN=data.nijmegen.nl,C=NL', true],
+      // A client-sent X_Amzn_Mtls_Clientcert_Subject joined with the ALB's value.
+      ['CN=data.nijmegen.nl, CN=evil,C=NL', false],
+      ['CN=evil,C=NL, x,CN=data.nijmegen.nl,y', false],
+      ['', false],
+    ])('allows subject "%s": %s', (subject, allowed) => {
+      expect(allowedPattern(config).test(subject)).toBe(allowed);
+    });
+
+    test('sets no limit on the request body', () => {
+      expect(config).toContain('client_max_body_size 0;');
+    });
+
+    test('accepts any CN when none is configured, but still requires a certificate', () => {
+      const stack = new MuleRuntimeStack(new App(), 'MuleRuntimeStackNginxAnyCn', {
+        ...defaultProps,
+        configuration: { ...defaultProps.configuration, clientCertificateCommonName: undefined },
+      });
+      const definitions: any[] = Object.values(Template.fromStack(stack).findResources('AWS::ECS::TaskDefinition'))[0].Properties.ContainerDefinitions;
+      const pattern = allowedPattern(decodeConfig(definitions.find(container => container.Name === 'NginxContainer').Command[0]));
+      expect(pattern.test('CN=local-test,O=Dev')).toBe(true);
+      expect(pattern.test('')).toBe(false);
+    });
+
+    test('checks the domain on acceptance and production only', () => {
+      expect(getConfiguration('acceptance').clientCertificateCommonName).toBe('data-test.nijmegen.nl');
+      expect(getConfiguration('main').clientCertificateCommonName).toBe('data.nijmegen.nl');
+      expect(getConfiguration('development').clientCertificateCommonName).toBeUndefined();
+    });
   });
 });

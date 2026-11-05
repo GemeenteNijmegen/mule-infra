@@ -62,6 +62,8 @@ You must store the `truststore.pem` file containing public certificates in the d
 > [!WARNING]  
 > If the `.pem` file is updated, you must replace it in the S3 bucket and also manually update the truststore on the corresponding EC2 instances to ensure they use the new version.
 
+The truststore only checks who issued a client certificate. An nginx container in each Mule task ([nginx.conf](src/nginx/nginx.conf)) then checks its CN against `clientCertificateCommonName` in [Configuration.ts](src/Configuration.ts) and answers 403 otherwise. Development leaves this setting empty and accepts any CN. The traffic flows ALB → nginx (8080) → Mule (8081). Rejected requests are logged with their certificate subject in the `/mule/<branch>/runtime-N` log groups, under the `nginx-N` stream prefix. Only `/health` skips the check, because ALB health checks carry no certificate.
+
 ## Infrastructure
 
 When you push a change to the development, acceptance or main branch, the following happens:

@@ -20,6 +20,7 @@ describe('GrafanaStack', () => {
       proxyEnabled: true,
       mqHostInstanceType: 'mq.t3.micro',
       containerImages: getConfiguration('development').containerImages,
+      clientCertificateCommonName: 'data.nijmegen.nl',
       grafanaOAuthClientId: 'grafana-test',
       grafanaOAuthProviderDomain: 'auth.example.com',
       grafanaOAuthRealm: 'mule',
