@@ -13,6 +13,7 @@ import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
+import { AlbLogDelivery } from './AlbLogDelivery';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
 
@@ -225,6 +226,8 @@ export class MuleRuntimeStack extends Stack {
       'oosterbierum': '10.8.109.37',
       'oudwoude': '10.8.107.95',
       'data': '192.168.10.20',
+      // Shared by Test and Production
+      'niebert': '10.8.109.99',
     };
 
     Object.entries(karelstadHosts).forEach(([recordName, ip]) => {
@@ -233,6 +236,18 @@ export class MuleRuntimeStack extends Stack {
         recordName,
         target: RecordTarget.fromIpAddresses(ip),
       });
+    });
+
+    // Mirrors Karelstad's own DNS: the domain resolves to every domain
+    // controller and karelstad is an alias for it.
+    new ARecord(this, 'KarelstadRecord-apex', {
+      zone: karelstadPrivateZone,
+      target: RecordTarget.fromIpAddresses('10.17.2.150', '10.17.2.151', '10.17.2.152', '10.17.2.153'),
+    });
+    new CnameRecord(this, 'KarelstadRecord-karelstad', {
+      zone: karelstadPrivateZone,
+      recordName: 'karelstad',
+      domainName: karelstadPrivateZone.zoneName,
     });
 
     // One shared log group and stream for the Mule application logs, written
@@ -247,6 +262,28 @@ export class MuleRuntimeStack extends Stack {
       retention: logs.RetentionDays.SIX_MONTHS,
       removalPolicy: RemovalPolicy.RETAIN,
     });
+
+    // One directory every task mounts at /efs-shared, for files the Mule apps
+    // must see from any instance. The per-task access points below cannot
+    // reach it, as an access point roots the mount at its own path.
+    const sharedAccessPoint = new efs.AccessPoint(this, 'MuleEfsSharedAccessPoint', {
+      fileSystem,
+      path: '/mule-shared',
+      createAcl: {
+        ownerUid: '1000',
+        ownerGid: '1000',
+        permissions: '755',
+      },
+      posixUser: {
+        uid: '1000',
+        gid: '1000',
+      },
+    });
+
+    const nginxPort = 8080;
+    const nginxMemoryLimitMiB = 256;
+    const nginxConfig = fs.readFileSync(path.join(__dirname, 'nginx/nginx.conf'), 'utf8')
+      .replace('__CLIENT_CERT_CN__', props.configuration.clientCertificateCommonName?.replace(/\./g, '\\.') ?? '.*');
 
     const loadBalancerTargets = [];
     let previousService: ecs.FargateService | undefined;
@@ -297,6 +334,18 @@ export class MuleRuntimeStack extends Stack {
         },
       });
 
+      taskDefinition.addVolume({
+        name: 'mule-shared-efs-volume',
+        efsVolumeConfiguration: {
+          fileSystemId: fileSystem.fileSystemId,
+          transitEncryption: 'ENABLED',
+          authorizationConfig: {
+            accessPointId: sharedAccessPoint.accessPointId,
+            iam: 'ENABLED',
+          },
+        },
+      });
+
       taskDefinition.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
         actions: [
           'elasticfilesystem:ClientMount',
@@ -306,18 +355,19 @@ export class MuleRuntimeStack extends Stack {
         resources: [fileSystem.fileSystemArn],
         conditions: {
           StringEquals: {
-            'elasticfilesystem:AccessPointArn': accessPoint.accessPointArn,
+            'elasticfilesystem:AccessPointArn': [accessPoint.accessPointArn, sharedAccessPoint.accessPointArn],
           },
         },
       }));
 
       const container = taskDefinition.addContainer('MuleRuntimeContainer', {
-        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, Statics.muleDockerImageHash),
+        image: ecs.ContainerImage.fromEcrRepository(muleRuntimeEcr, props.configuration.containerImages.muleImageHash),
         logging: ecs.LogDrivers.awsLogs({
           streamPrefix: `mule-runtime-${i}`,
           logGroup,
         }),
-        memoryLimitMiB: props.configuration.memoryLimitMiB,
+        // Container limits may not add up to more than the task's memory.
+        memoryLimitMiB: props.configuration.memoryLimitMiB - nginxMemoryLimitMiB,
         environment: {
           SECRET_MULE_LICENSE_ARN: licenseSecret.secretArn,
           SERVER_NAME: `mule-${props.configuration.branchName.toLowerCase()}-${i}`,
@@ -380,6 +430,31 @@ export class MuleRuntimeStack extends Stack {
         containerPath: '/efs-data',
         readOnly: false,
         sourceVolume: 'mule-efs-volume',
+      }, {
+        containerPath: '/efs-shared',
+        readOnly: false,
+        sourceVolume: 'mule-shared-efs-volume',
+      });
+
+      // Containers in a Fargate task share localhost, so nginx cannot also use
+      // 8081. The load balancer only reaches this port, not Mule's.
+      const nginxContainer = taskDefinition.addContainer('NginxContainer', {
+        image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.nginxImage),
+        memoryLimitMiB: nginxMemoryLimitMiB,
+        entryPoint: ['/bin/sh', '-c'],
+        command: [[
+          'set -eu',
+          `echo '${Buffer.from(nginxConfig).toString('base64')}' | base64 -d > /tmp/nginx.conf`,
+          'exec nginx -c /tmp/nginx.conf -g "daemon off;"',
+        ].join('\n')],
+        logging: ecs.LogDrivers.awsLogs({
+          streamPrefix: `nginx-${i}`,
+          logGroup,
+        }),
+      });
+      nginxContainer.addPortMappings({
+        containerPort: nginxPort,
+        protocol: ecs.Protocol.TCP,
       });
 
       const ecsService = new ecs.FargateService(this, `Service${i}`, {
@@ -409,14 +484,28 @@ export class MuleRuntimeStack extends Stack {
       fileSystem.connections.allowDefaultPortFrom(ecsService.connections);
 
       loadBalancerTargets.push(ecsService.loadBalancerTarget({
-        containerName: 'MuleRuntimeContainer',
-        containerPort: 8081,
+        containerName: 'NginxContainer',
+        containerPort: nginxPort,
       }));
     }
 
     const lb = new ApplicationLoadBalancer(this, 'LB', {
       vpc: this.vpc,
       internetFacing: true,
+    });
+
+    new AlbLogDelivery(this, 'LbAccessLogs', {
+      loadBalancer: lb,
+      logType: 'ALB_ACCESS_LOGS',
+      name: `mule-${props.configuration.branchName}-alb-access`,
+      retention: logs.RetentionDays.SIX_MONTHS,
+    });
+    // Failed mTLS handshakes only show up in the connection logs.
+    new AlbLogDelivery(this, 'LbConnectionLogs', {
+      loadBalancer: lb,
+      logType: 'ALB_CONNECTION_LOGS',
+      name: `mule-${props.configuration.branchName}-alb-connection`,
+      retention: logs.RetentionDays.SIX_MONTHS,
     });
 
     const listener = lb.addListener('HTTPListener', {

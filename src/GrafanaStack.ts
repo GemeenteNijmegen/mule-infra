@@ -24,6 +24,7 @@ import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
+import { AlbLogDelivery } from './AlbLogDelivery';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
 
@@ -87,6 +88,12 @@ export class GrafanaStack extends Stack {
       internetFacing: true,
       securityGroup: albSg,
     });
+    new AlbLogDelivery(this, 'GrafanaLoadBalancerAccessLogs', {
+      loadBalancer,
+      logType: 'ALB_ACCESS_LOGS',
+      name: `grafana-${props.configuration.branchName}-alb-access`,
+      retention: logs.RetentionDays.ONE_MONTH,
+    });
 
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'GrafanaTaskDefinition', {
       cpu: 512,
@@ -98,7 +105,6 @@ export class GrafanaStack extends Stack {
 
     const grafanaConfigRoot = path.join(__dirname, 'grafana');
     const renderGrafanaConfig = (contents: string) => contents
-      .replace(/__AWS_REGION__/g, this.region)
       .replace(/__LOKI_URL__/g, lokiUrl)
       .replace(/__OAUTH_CLIENT_ID__/g, grafanaOAuthClientId)
       .replace(/__OAUTH_PROVIDER_DOMAIN__/g, grafanaOAuthProviderDomain)
@@ -154,7 +160,7 @@ export class GrafanaStack extends Stack {
       'exec /run.sh',
     ].join('\n');
     const container = taskDefinition.addContainer('GrafanaContainer', {
-      image: ecs.ContainerImage.fromRegistry(Statics.grafanaDockerImage),
+      image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.grafanaImage),
       user: '472',
       entryPoint: ['/bin/sh', '-c'],
       command: [provisioningScript],
@@ -360,13 +366,12 @@ export class GrafanaStack extends Stack {
     // container fill them in at start-up from environment variables, whose
     // values CloudFormation does resolve.
     const config = fs.readFileSync(path.join(__dirname, 'grafana/loki/loki-config.yaml'), 'utf8');
+    const configDir = '/etc/loki-config';
     const command = [
       'set -eu',
-      'mkdir -p /etc/loki',
       `echo '${Buffer.from(config).toString('base64')}' | base64 -d`
       + ' | sed -e "s|__LOKI_BUCKET__|$LOKI_BUCKET|g" -e "s|__AWS_REGION__|$AWS_REGION|g"'
-      + ' > /etc/loki/loki-config.yaml',
-      'exec /usr/bin/loki -config.file=/etc/loki/loki-config.yaml',
+      + ` > ${configDir}/loki-config.yaml`,
     ].join('\n');
 
     const logGroup = new logs.LogGroup(this, 'LokiLogGroup', {
@@ -382,23 +387,43 @@ export class GrafanaStack extends Stack {
       memoryLimitMiB: 2048,
     });
     bucket.grantReadWrite(taskDefinition.taskRole);
-    taskDefinition.addContainer('LokiContainer', {
-      image: ecs.ContainerImage.fromRegistry(Statics.lokiDockerImage),
+
+    // The Loki image is distroless (no shell since 3.5.8), so a short-lived init
+    // container writes the config to a shared volume. It reuses the Alloy image,
+    // which is already pinned and pulled for this task and does have a shell.
+    taskDefinition.addVolume({ name: 'loki-config' });
+    const configContainer = taskDefinition.addContainer('LokiConfigContainer', {
+      image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.alloyImage),
+      essential: false,
       entryPoint: ['/bin/sh', '-c'],
       command: [command],
       environment: {
         LOKI_BUCKET: bucket.bucketName,
         AWS_REGION: this.region,
       },
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'loki-config', logGroup }),
+    });
+    configContainer.addMountPoints({ sourceVolume: 'loki-config', containerPath: configDir, readOnly: false });
+
+    const lokiContainer = taskDefinition.addContainer('LokiContainer', {
+      image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.lokiImage),
+      command: [`-config.file=${configDir}/loki-config.yaml`],
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'loki', logGroup }),
       healthCheck: {
-        command: ['CMD-SHELL', 'wget -q -O - http://localhost:3100/ready || exit 1'],
+        // Loki's built-in check of its own /ready endpoint; the image has no wget.
+        command: ['CMD', '/usr/bin/loki', '-health'],
         interval: Duration.seconds(30),
         timeout: Duration.seconds(5),
         retries: 3,
         startPeriod: Duration.seconds(90),
       },
-    }).addPortMappings({ containerPort: 3100, protocol: ecs.Protocol.TCP });
+    });
+    lokiContainer.addPortMappings({ containerPort: 3100, protocol: ecs.Protocol.TCP });
+    lokiContainer.addMountPoints({ sourceVolume: 'loki-config', containerPath: configDir, readOnly: true });
+    lokiContainer.addContainerDependencies({
+      container: configContainer,
+      condition: ecs.ContainerDependencyCondition.SUCCESS,
+    });
 
     // Alloy rides in the Loki task as a non-essential sidecar: it pulls the Mule
     // application logs from CloudWatch and pushes them to Loki over
@@ -412,12 +437,12 @@ export class GrafanaStack extends Stack {
       `echo '${Buffer.from(alloyConfig).toString('base64')}' | base64 -d > /tmp/config.alloy`,
       // otelcol.receiver.awscloudwatch is an experimental Alloy component, so it
       // only loads with --stability.level=experimental. The image tag is pinned
-      // in Statics, so a breaking change can't land until we bump it on purpose.
+      // per branch in Configuration, so a breaking change can't land until we bump it on purpose.
       'exec alloy run /tmp/config.alloy --stability.level=experimental'
       + ' --disable-reporting --storage.path=/tmp/alloy --server.http.listen-addr=127.0.0.1:12345',
     ].join('\n');
     taskDefinition.addContainer('LokiAlloyContainer', {
-      image: ecs.ContainerImage.fromRegistry(Statics.alloyDockerImage),
+      image: ecs.ContainerImage.fromRegistry(props.configuration.containerImages.alloyImage),
       // A broken Alloy config or a CloudWatch outage must not take Loki down.
       essential: false,
       entryPoint: ['/bin/sh', '-c'],

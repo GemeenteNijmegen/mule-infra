@@ -1,6 +1,6 @@
 import { App } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
-import { Configuration } from '../src/Configuration';
+import { Configuration, getConfiguration } from '../src/Configuration';
 import { MuleRuntimeStack } from '../src/MuleRuntimeStack';
 import { ProxyStack } from '../src/ProxyStack';
 
@@ -18,6 +18,8 @@ describe('ProxyStack', () => {
       maxHealthyPercent: 100,
       proxyEnabled: true,
       mqHostInstanceType: 'mq.t3.micro',
+      containerImages: getConfiguration('development').containerImages,
+      clientCertificateCommonName: 'data.nijmegen.nl',
     } as unknown as Configuration,
   };
 
