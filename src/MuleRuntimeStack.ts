@@ -13,6 +13,7 @@ import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
+import { AlbLogDelivery } from './AlbLogDelivery';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
 
@@ -464,6 +465,20 @@ export class MuleRuntimeStack extends Stack {
     const lb = new ApplicationLoadBalancer(this, 'LB', {
       vpc: this.vpc,
       internetFacing: true,
+    });
+
+    new AlbLogDelivery(this, 'LbAccessLogs', {
+      loadBalancer: lb,
+      logType: 'ALB_ACCESS_LOGS',
+      name: `mule-${props.configuration.branchName}-alb-access`,
+      retention: logs.RetentionDays.SIX_MONTHS,
+    });
+    // Failed mTLS handshakes only show up in the connection logs.
+    new AlbLogDelivery(this, 'LbConnectionLogs', {
+      loadBalancer: lb,
+      logType: 'ALB_CONNECTION_LOGS',
+      name: `mule-${props.configuration.branchName}-alb-connection`,
+      retention: logs.RetentionDays.SIX_MONTHS,
     });
 
     const listener = lb.addListener('HTTPListener', {

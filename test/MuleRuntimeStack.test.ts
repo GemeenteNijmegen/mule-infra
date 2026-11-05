@@ -200,4 +200,17 @@ describe('MuleRuntimeStack taskCount logic', () => {
       ],
     });
   });
+
+  test('writes load balancer access and connection logs', () => {
+    const app = new App();
+    const stack = new MuleRuntimeStack(app, 'MuleRuntimeStackLbLogs', {
+      ...defaultProps,
+      configuration: { ...defaultProps.configuration, taskCount: 1 },
+    });
+
+    const template = Template.fromStack(stack);
+    template.hasResourceProperties('AWS::Logs::DeliverySource', { LogType: 'ALB_ACCESS_LOGS' });
+    template.hasResourceProperties('AWS::Logs::DeliverySource', { LogType: 'ALB_CONNECTION_LOGS' });
+    template.resourceCountIs('AWS::Logs::Delivery', 2);
+  });
 });

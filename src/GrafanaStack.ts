@@ -24,6 +24,7 @@ import { LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
+import { AlbLogDelivery } from './AlbLogDelivery';
 import { Configurable } from './Configuration';
 import { Statics } from './Statics';
 
@@ -86,6 +87,12 @@ export class GrafanaStack extends Stack {
       vpc: props.vpc,
       internetFacing: true,
       securityGroup: albSg,
+    });
+    new AlbLogDelivery(this, 'GrafanaLoadBalancerAccessLogs', {
+      loadBalancer,
+      logType: 'ALB_ACCESS_LOGS',
+      name: `grafana-${props.configuration.branchName}-alb-access`,
+      retention: logs.RetentionDays.ONE_MONTH,
     });
 
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'GrafanaTaskDefinition', {

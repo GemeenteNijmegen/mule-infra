@@ -274,6 +274,22 @@ describe('GrafanaStack', () => {
       },
     });
   });
+
+  test('writes load balancer access logs', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', {
+      ...defaultProps,
+    });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const template = Template.fromStack(grafanaStack);
+    template.hasResourceProperties('AWS::Logs::DeliverySource', { LogType: 'ALB_ACCESS_LOGS' });
+    template.resourceCountIs('AWS::Logs::Delivery', 1);
+  });
 });
 
 /**
