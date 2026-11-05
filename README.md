@@ -8,7 +8,7 @@ It pulls the docker image from ECR from the gn-build account, and runs it in ECS
 
 The repo with the docker image is [here](https://github.com/GemeenteNijmegen/mule-docker-image).
 
-To update the docker image version in `mule-infra`, update the `muleDockerImageHash` in `src/Statics.ts`.
+To update the docker image version in `mule-infra`, update `containerImages.muleImageHash` for the relevant branch in `src/Configuration.ts`.
 
 ## Manual Pre-requisites
 
@@ -61,6 +61,8 @@ You must store the `truststore.pem` file containing public certificates in the d
 
 > [!WARNING]  
 > If the `.pem` file is updated, you must replace it in the S3 bucket and also manually update the truststore on the corresponding EC2 instances to ensure they use the new version.
+
+The truststore only checks who issued a client certificate. An nginx container in each Mule task ([nginx.conf](src/nginx/nginx.conf)) then checks its CN against `clientCertificateCommonName` in [Configuration.ts](src/Configuration.ts) and answers 403 otherwise. Development leaves this setting empty and accepts any CN. The traffic flows ALB → nginx (8080) → Mule (8081). Requests are logged with their status and certificate subject in the `/mule/<branch>/runtime-N` log groups, under the `nginx-N` stream prefix; rejected ones have `denied=1`. Only `/health` skips the check, because ALB health checks carry no certificate, and it is not logged.
 
 ## Infrastructure
 

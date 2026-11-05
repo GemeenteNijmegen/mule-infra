@@ -1,7 +1,7 @@
 import * as zlib from 'zlib';
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { Configuration } from '../src/Configuration';
+import { Configuration, getConfiguration } from '../src/Configuration';
 import { GrafanaStack } from '../src/GrafanaStack';
 import { MuleRuntimeStack } from '../src/MuleRuntimeStack';
 
@@ -19,6 +19,8 @@ describe('GrafanaStack', () => {
       maxHealthyPercent: 100,
       proxyEnabled: true,
       mqHostInstanceType: 'mq.t3.micro',
+      containerImages: getConfiguration('development').containerImages,
+      clientCertificateCommonName: 'data.nijmegen.nl',
       grafanaOAuthClientId: 'grafana-test',
       grafanaOAuthProviderDomain: 'auth.example.com',
       grafanaOAuthRealm: 'mule',
@@ -182,6 +184,18 @@ describe('GrafanaStack', () => {
 
     expect(commandText).toContain('/var/lib/grafana/provisioning/datasources/loki.yaml');
     expect(commandText).not.toContain('/var/lib/grafana/provisioning/datasources/cloudwatch.yaml');
+
+    // The Loki image has no shell: an init container writes its config.
+    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+      ContainerDefinitions: Match.arrayWith([
+        Match.objectLike({
+          Image: Match.stringLikeRegexp('grafana/loki'),
+          Command: ['-config.file=/etc/loki-config/loki-config.yaml'],
+          HealthCheck: Match.objectLike({ Command: ['CMD', '/usr/bin/loki', '-health'] }),
+          DependsOn: [Match.objectLike({ Condition: 'SUCCESS' })],
+        }),
+      ]),
+    });
   });
 
   test('keeps the Grafana database on EFS and replaces the task without overlap', () => {
@@ -260,6 +274,22 @@ describe('GrafanaStack', () => {
         ]),
       },
     });
+  });
+
+  test('writes load balancer access logs', () => {
+    const app = new App();
+    const muleStack = new MuleRuntimeStack(app, 'MuleRuntimeStack', {
+      ...defaultProps,
+    });
+    const grafanaStack = new GrafanaStack(app, 'GrafanaStack', {
+      ...defaultProps,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+    });
+
+    const template = Template.fromStack(grafanaStack);
+    template.hasResourceProperties('AWS::Logs::DeliverySource', { LogType: 'ALB_ACCESS_LOGS' });
+    template.resourceCountIs('AWS::Logs::Delivery', 1);
   });
 });
 
