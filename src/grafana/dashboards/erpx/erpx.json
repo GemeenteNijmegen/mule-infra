@@ -26,7 +26,7 @@
         "type": "loki",
         "uid": "loki"
       },
-      "description": "Aantal ERPx berichten per zender, PROEF-zendingen uitgesloten.",
+      "description": "Aantal ERPx berichten per zender",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -89,7 +89,7 @@
           },
           "direction": "backward",
           "editorMode": "code",
-          "expr": "sum by (zender) (\n  count_over_time(\n    {service_name=\"mule\"}\n    | json\n    | applicationName =~ \"planon-eapi|energiemissie-eapi|ltc-eapi|easyfunders-eapi|fis-nijm-eadap|power2pay-padap|fis-nijm-papi\"\n    | content_zender != \"\" and content_zender !~ \"(?i)PROEF\"\n    | label_format zender=content_zender\n    [$__interval]\n  )\n)",
+          "expr": "sum by (zender) (\n  count_over_time(\n    {service_name=\"mule\"}\n    | json\n    | applicationName =~ \"planon-eapi|energiemissie-eapi|ltc-eapi|easyfunders-eapi|fis-nijm-eadap|power2pay-padap|fis-nijm-papi\"\n    | content_zender != \"\"\n    | label_format zender=content_zender\n    [$__interval]\n  )\n)",
           "legendFormat": "{{zender}}",
           "queryType": "range",
           "refId": "A"
@@ -181,7 +181,7 @@
           },
           "direction": "backward",
           "editorMode": "code",
-          "expr": "sum by(correlationId) (\n  count_over_time(\n    {service_name=\"mule\"} \n    | json \n    | applicationName =~ `planon-eapi|energiemissie-eapi|ltc-eapi|easyfunders-eapi|fis-nijm-eadap|power2pay-padap|fis-nijm-papi` \n    | priority = `ERROR` \n    [$__range]\n  )   \n)",
+          "expr": "sum by(correlationId) (\n  count_over_time(\n    {service_name=\"mule\"} \n    | json \n    | applicationName =~ `planon-eapi|energiemissie-eapi|ltc-eapi|easyfunders-eapi|fis-nijm-eadap|power2pay-padap|fis-nijm-papi` \n    | priority = `ERROR` != \"PROEF\"\n    [$__range]\n  )   \n)",
           "legendFormat": "{{correlationId}}",
           "queryType": "instant",
           "refId": "A"
@@ -373,7 +373,7 @@
           },
           "direction": "backward",
           "editorMode": "code",
-          "expr": "sum by(correlationId, content_description, timestamp) (\n  count_over_time(\n    {service_name=\"mule\"} \n    | json\n    | priority = `ERROR` \n    | (applicationName =~ `.*energiemissie-eapi.*|.*planon-eapi.*|.*ltc-eapi.*|.*easyfunders-eapi.*|.*fis-nijm-eadap.*|.*power2pay-padap.*|.*erpx-nijm-sapi.*`)\nor (applicationName =~ `.*fis-nijm-papi.*` and message =~ `bestandsnaam`) or (applicationName =~ `.*fis-nijm-papi.*` and content_description != \"\")\n    [$__range]\n  )   \n)",
+          "expr": "sum by(correlationId, content_description, timestamp) (\n  count_over_time(\n    {service_name=\"mule\"} \n    | json\n    | priority = `ERROR` != \"PROEF\"\n    | (applicationName =~ `.*energiemissie-eapi.*|.*planon-eapi.*|.*ltc-eapi.*|.*easyfunders-eapi.*|.*fis-nijm-eadap.*|.*power2pay-padap.*|.*erpx-nijm-sapi.*`)\nor (applicationName =~ `.*fis-nijm-papi.*` and message =~ `bestandsnaam`) or (applicationName =~ `.*fis-nijm-papi.*` and content_description != \"\")\n    [$__range]\n  )   \n)",
           "legendFormat": "{{correlationId}}",
           "queryType": "instant",
           "refId": "A"
