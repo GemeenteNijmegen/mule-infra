@@ -74,6 +74,8 @@ describe('MuleRuntimeStack taskCount logic', () => {
     // share a group rather than each getting their own.
     const [appLogGroupId] = Object.entries(template.findResources('AWS::Logs::LogGroup'))
       .find(([, group]) => group.Properties.LogGroupName === '/mule/main/apps')!;
+    const [appSystemLogGroupId] = Object.entries(template.findResources('AWS::Logs::LogGroup'))
+      .find(([, group]) => group.Properties.LogGroupName === '/mule/main/app-system')!;
     const taskDefinitions = Object.values(template.findResources('AWS::ECS::TaskDefinition'));
     expect(taskDefinitions).toHaveLength(3);
     taskDefinitions.forEach(taskDefinition => {
@@ -81,6 +83,7 @@ describe('MuleRuntimeStack taskCount logic', () => {
       expect(environment).toEqual(expect.arrayContaining([
         { Name: 'MULE_APP_LOG_GROUP', Value: { Ref: appLogGroupId } },
         { Name: 'MULE_APP_LOG_STREAM', Value: 'apps' },
+        { Name: 'MULE_APP_SYSTEM_LOG_GROUP', Value: { Ref: appSystemLogGroupId } },
       ]));
     });
   });

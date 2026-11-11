@@ -263,6 +263,14 @@ export class MuleRuntimeStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
+    // Shared group for the app exceptions and warnings, written by log4j2 like
+    // the app logs. The per-task runtime-N groups keep the Mule server logs.
+    const appSystemLogGroup = new logs.LogGroup(this, 'MuleAppSystemLogGroup', {
+      logGroupName: `/mule/${props.configuration.branchName}/app-system`,
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
     // One directory every task mounts at /efs-shared, for files the Mule apps
     // must see from any instance. The per-task access points below cannot
     // reach it, as an access point roots the mount at its own path.
@@ -388,6 +396,7 @@ export class MuleRuntimeStack extends Stack {
           MULE_SECRETS_NAME_BASE: secretsNameBase.secretName,
           MULE_APP_LOG_GROUP: appLogGroup.logGroupName,
           MULE_APP_LOG_STREAM: Statics.muleAppLogStreamName,
+          MULE_APP_SYSTEM_LOG_GROUP: appSystemLogGroup.logGroupName,
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),
@@ -401,6 +410,8 @@ export class MuleRuntimeStack extends Stack {
       });
 
       appLogGroup.grant(taskDefinition.taskRole,
+        'logs:CreateLogStream', 'logs:PutLogEvents', 'logs:DescribeLogStreams');
+      appSystemLogGroup.grant(taskDefinition.taskRole,
         'logs:CreateLogStream', 'logs:PutLogEvents', 'logs:DescribeLogStreams');
 
       licenseSecret.grantRead(taskDefinition.taskRole);

@@ -92,7 +92,8 @@ storage level, not by filtering after the fact:
 | Logs | Written by | Lands in |
 | --- | --- | --- |
 | Application | the app's own log4j2 CloudWatch appender | `/mule/<branch>/apps`, one shared stream, 6 months |
-| Runtime / system | the ECS `awslogs` driver on stdout | `/mule/<branch>/runtime-N`, one group per task, 1 month |
+| App system (exceptions, warnings) | the app's log4j2 CloudWatch appender | `/mule/<branch>/app-system`, shared by all tasks, 1 month (`MULE_APP_SYSTEM_LOG_GROUP`) |
+| Runtime (Mule server) | the ECS `awslogs` driver on stdout | `/mule/<branch>/runtime-N`, one group per task, 1 month |
 
 Every application and every task writes to the **same** stream in the app group,
 so a correlation ID is readable in one place instead of being spread across the
