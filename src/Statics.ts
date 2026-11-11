@@ -34,6 +34,9 @@ export class Statics {
    * single place.
    */
   static readonly muleAppLogStreamName = 'apps';
+
+  /** Stream in the shared app-system log group, for the app exceptions and warnings. */
+  static readonly muleAppSystemLogStreamName = 'app-system';
   // MARK: environments
   static readonly buildEnvironment = {
     account: '836443378780',

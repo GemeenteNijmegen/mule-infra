@@ -397,6 +397,7 @@ export class MuleRuntimeStack extends Stack {
           MULE_APP_LOG_GROUP: appLogGroup.logGroupName,
           MULE_APP_LOG_STREAM: Statics.muleAppLogStreamName,
           MULE_APP_SYSTEM_LOG_GROUP: appSystemLogGroup.logGroupName,
+          MULE_APP_SYSTEM_LOG_STREAM: Statics.muleAppSystemLogStreamName,
         },
         secrets: {
           ANYPOINT_CLIENT_ID: ecs.Secret.fromSsmParameter(clientIdParam),

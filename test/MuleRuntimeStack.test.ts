@@ -84,6 +84,7 @@ describe('MuleRuntimeStack taskCount logic', () => {
         { Name: 'MULE_APP_LOG_GROUP', Value: { Ref: appLogGroupId } },
         { Name: 'MULE_APP_LOG_STREAM', Value: 'apps' },
         { Name: 'MULE_APP_SYSTEM_LOG_GROUP', Value: { Ref: appSystemLogGroupId } },
+        { Name: 'MULE_APP_SYSTEM_LOG_STREAM', Value: 'app-system' },
       ]));
     });
   });
