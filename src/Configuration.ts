@@ -154,7 +154,7 @@ const configurations: Configuration[] = [
     grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-dev',
     mqHostInstanceType: 'mq.t3.micro',
     containerImages: {
-      muleImageHash: 'f0b7590ec8f1255e1f61ddfe7efcd9310fa02ddd',
+      muleImageHash: '4c4c6dbb61d5aba202cd5f2440c78e43882f0166',
       grafanaImage: 'grafana/grafana:13.3.0',
       lokiImage: 'grafana/loki:3.7.9',
       alloyImage: 'grafana/alloy:v1.21.3',
