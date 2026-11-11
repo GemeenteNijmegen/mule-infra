@@ -182,7 +182,7 @@ const configurations: Configuration[] = [
     grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-accp',
     mqHostInstanceType: 'mq.t3.micro',
     containerImages: {
-      muleImageHash: '709d144f846bf7f35ed83a33533db854ffc1a8b3',
+      muleImageHash: 'f0b7590ec8f1255e1f61ddfe7efcd9310fa02ddd',
       grafanaImage: 'grafana/grafana:13.3.0',
       lokiImage: 'grafana/loki:3.7.9',
       alloyImage: 'grafana/alloy:v1.21.3',
@@ -211,7 +211,7 @@ const configurations: Configuration[] = [
     grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-prod',
     mqHostInstanceType: 'mq.m5.large',
     containerImages: {
-      muleImageHash: '709d144f846bf7f35ed83a33533db854ffc1a8b3',
+      muleImageHash: 'f0b7590ec8f1255e1f61ddfe7efcd9310fa02ddd',
       grafanaImage: 'grafana/grafana:13.3.0',
       lokiImage: 'grafana/loki:3.7.9',
       alloyImage: 'grafana/alloy:v1.21.3',
