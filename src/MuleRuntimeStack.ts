@@ -468,7 +468,8 @@ export class MuleRuntimeStack extends Stack {
         availabilityZoneRebalancing: ecs.AvailabilityZoneRebalancing.DISABLED,
         // add to a subnet with internet access
         vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-        healthCheckGracePeriod: Duration.seconds(300),
+        // Startup deploys every app from EFS (~17 min on development, which has all apps).
+        healthCheckGracePeriod: Duration.minutes(30),
         enableExecuteCommand: true,
       });
 
