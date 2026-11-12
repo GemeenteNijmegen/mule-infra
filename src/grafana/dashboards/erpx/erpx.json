@@ -95,7 +95,7 @@
           "refId": "A"
         }
       ],
-      "title": "ERPx berichten per zender (excl. PROEF)",
+      "title": "ERPx berichten per zender",
       "transformations": [
         {
           "id": "reduce",
