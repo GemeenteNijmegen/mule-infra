@@ -26,7 +26,7 @@ export class Statics {
     'notify-nl',
     'corsa',
     'fcc',
-    'youforce'
+    'youforce',
   ];
 
   /**
