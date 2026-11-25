@@ -154,11 +154,11 @@ const configurations: Configuration[] = [
     grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-dev',
     mqHostInstanceType: 'mq.t3.micro',
     containerImages: {
-      muleImageHash: 'f0b7590ec8f1255e1f61ddfe7efcd9310fa02ddd',
+      muleImageHash: 'd80489b48bacaeab6857bba2b2c920c80d896777',
       grafanaImage: 'grafana/grafana:13.3.0',
       lokiImage: 'grafana/loki:3.7.9',
       alloyImage: 'grafana/alloy:v1.21.3',
-      nginxImage: 'nginxinc/nginx-unprivileged:1.31.7-alpine',
+      nginxImage: 'nginx/nginx-unprivileged:1.31.9-alpine',
     },
     cnames: {
       '_D1D3DA83D42898AF7DCC082754D0677D.data': '2DFCA4BBF3A2E3E9309B552F57876D8C.9633141E74B7095EB9444AD755627AFF.sectigo.com', //cert for on-prem layer7 auth (dev)
@@ -182,11 +182,11 @@ const configurations: Configuration[] = [
     grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-accp',
     mqHostInstanceType: 'mq.t3.micro',
     containerImages: {
-      muleImageHash: 'f0b7590ec8f1255e1f61ddfe7efcd9310fa02ddd',
+      muleImageHash: 'd80489b48bacaeab6857bba2b2c920c80d896777',
       grafanaImage: 'grafana/grafana:13.3.0',
       lokiImage: 'grafana/loki:3.7.9',
       alloyImage: 'grafana/alloy:v1.21.3',
-      nginxImage: 'nginxinc/nginx-unprivileged:1.31.7-alpine',
+      nginxImage: 'nginx/nginx-unprivileged:1.31.9-alpine',
     },
     clientCertificateCommonName: 'data-test.nijmegen.nl',
     cnames: {
@@ -211,11 +211,11 @@ const configurations: Configuration[] = [
     grafanaSmtpSecretName: '/ses/smtp-credentials/mule-infra-prod',
     mqHostInstanceType: 'mq.m5.large',
     containerImages: {
-      muleImageHash: 'f0b7590ec8f1255e1f61ddfe7efcd9310fa02ddd',
+      muleImageHash: 'd80489b48bacaeab6857bba2b2c920c80d896777',
       grafanaImage: 'grafana/grafana:13.3.0',
       lokiImage: 'grafana/loki:3.7.9',
       alloyImage: 'grafana/alloy:v1.21.3',
-      nginxImage: 'nginxinc/nginx-unprivileged:1.31.7-alpine',
+      nginxImage: 'nginx/nginx-unprivileged:1.31.9-alpine',
     },
     clientCertificateCommonName: 'data.nijmegen.nl',
     cnames: {
