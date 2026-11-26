@@ -80,10 +80,13 @@ done
 # -- Run the scan -------------------------------------------------------------
 # rootfs, not fs: only rootfs reads installed jars, fs only reads lock files like pom.xml.
 # The first scan in a task downloads the vulnerability and Java databases.
+# Walking EFS took ~8 minutes, past Trivy's default 5 minute timeout. Each jar
+# read is a round trip to EFS, so more than the default 5 parallel reads pays off.
+# .mule is the runtime's working data (object stores, queues), not dependencies.
 echo ""
 $AWS ecs execute-command \
   --cluster "$CLUSTER_NAME" \
   --task "$TASK_ARN" \
   --container TrivyContainer \
   --interactive \
-  --command "trivy rootfs --scanners vuln --severity HIGH,CRITICAL --no-progress /scan"
+  --command "trivy rootfs --scanners vuln --severity HIGH,CRITICAL --no-progress --timeout 30m --parallel 20 --skip-dirs **/.mule /scan"
