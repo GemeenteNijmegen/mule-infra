@@ -133,6 +133,7 @@ export interface ContainerImages {
   lokiImage: string;
   alloyImage: string;
   nginxImage: string;
+  trivyImage: string;
 }
 
 const configurations: Configuration[] = [
@@ -159,6 +160,7 @@ const configurations: Configuration[] = [
       lokiImage: 'grafana/loki:3.7.9',
       alloyImage: 'grafana/alloy:v1.21.3',
       nginxImage: 'nginx/nginx-unprivileged:1.31.9-alpine',
+      trivyImage: 'aquasec/trivy:0.76.2',
     },
     cnames: {
       '_D1D3DA83D42898AF7DCC082754D0677D.data': '2DFCA4BBF3A2E3E9309B552F57876D8C.9633141E74B7095EB9444AD755627AFF.sectigo.com', //cert for on-prem layer7 auth (dev)
@@ -187,6 +189,7 @@ const configurations: Configuration[] = [
       lokiImage: 'grafana/loki:3.7.9',
       alloyImage: 'grafana/alloy:v1.21.3',
       nginxImage: 'nginx/nginx-unprivileged:1.31.9-alpine',
+      trivyImage: 'aquasec/trivy:0.76.2',
     },
     clientCertificateCommonName: 'data-test.nijmegen.nl',
     cnames: {
@@ -216,6 +219,7 @@ const configurations: Configuration[] = [
       lokiImage: 'grafana/loki:3.7.9',
       alloyImage: 'grafana/alloy:v1.21.3',
       nginxImage: 'nginx/nginx-unprivileged:1.31.9-alpine',
+      trivyImage: 'aquasec/trivy:0.76.2',
     },
     clientCertificateCommonName: 'data.nijmegen.nl',
     cnames: {

@@ -77,6 +77,12 @@ export class Statics {
   static readonly ssmProxySubnetId = `/${Statics.projectName}/proxy/subnet-id`;
   static readonly ssmProxySecurityGroupId = `/${Statics.projectName}/proxy/security-group-id`;
 
+  // MARK: dependency scan task (on-demand Trivy scan of the deployed apps)
+  static readonly ssmDependencyScanClusterName = `/${Statics.projectName}/dependency-scan/cluster-name`;
+  static readonly ssmDependencyScanTaskDefinitionArn = `/${Statics.projectName}/dependency-scan/task-definition-arn`;
+  static readonly ssmDependencyScanSubnetId = `/${Statics.projectName}/dependency-scan/subnet-id`;
+  static readonly ssmDependencyScanSecurityGroupId = `/${Statics.projectName}/dependency-scan/security-group-id`;
+
   // MARK: ActiveMQ web console (reachable via scripts/mq-console.sh)
   static readonly activeMqConsolePort = 8162;
   static readonly ssmActiveMqConsoleUrls = `/${Statics.projectName}/activemq/console-urls`;

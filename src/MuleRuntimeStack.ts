@@ -25,6 +25,9 @@ export class MuleRuntimeStack extends Stack {
   public readonly cluster: ecs.ICluster;
   public readonly messageQueueSecurityGroup: ec2.SecurityGroup;
   public readonly activeMqConsoleUrls: string[];
+  public readonly fileSystem: efs.FileSystem;
+  /** Runtime 1's data; every runtime runs the same apps, and this one always exists. */
+  public readonly firstRuntimeAccessPoint!: efs.AccessPoint;
 
   constructor(scope: Construct, id: string, private readonly props: MuleRuntimeStackProps) {
     super(scope, id, props);
@@ -32,7 +35,7 @@ export class MuleRuntimeStack extends Stack {
     const vpcWrapper = new GemeenteNijmegenVpc(this, 'vpc');
     this.vpc = vpcWrapper.vpc;
 
-    const fileSystem = new efs.FileSystem(this, 'MuleEfs', {
+    const fileSystem = this.fileSystem = new efs.FileSystem(this, 'MuleEfs', {
       vpc: this.vpc,
       encrypted: true,
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
@@ -324,6 +327,9 @@ export class MuleRuntimeStack extends Stack {
           gid: '1000',
         },
       });
+      if (i === 1) {
+        this.firstRuntimeAccessPoint = accessPoint;
+      }
 
       const taskDefinition: FargateTaskDefinition = new ecs.FargateTaskDefinition(this, `MuleRuntimeTaskDefinition${i}`, {
         cpu: props.configuration.cpu,

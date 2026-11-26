@@ -2,6 +2,7 @@ import { PermissionsBoundaryAspect } from '@gemeentenijmegen/aws-constructs';
 import { Aspects, Stage, StageProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { Configurable } from './Configuration';
+import { DependencyScanStack } from './DependencyScanStack';
 import { GrafanaStack } from './GrafanaStack';
 import { MuleRuntimeStack } from './MuleRuntimeStack';
 import { ProxyStack } from './ProxyStack';
@@ -37,6 +38,18 @@ export class MainStage extends Stage {
         messageQueueSecurityGroup: muleStack.messageQueueSecurityGroup,
       });
     }
+
+    /**
+     * On-demand dependency scan of the Mule apps on EFS
+     */
+    new DependencyScanStack(this, 'dependency-scan-stack', {
+      env: props.configuration.deploymentEnvironment,
+      configuration: props.configuration,
+      vpc: muleStack.vpc,
+      cluster: muleStack.cluster,
+      fileSystem: muleStack.fileSystem,
+      accessPoint: muleStack.firstRuntimeAccessPoint,
+    });
 
     /**
      * Grafana observability stack for dev only
