@@ -78,15 +78,64 @@ for _ in $(seq 1 30); do
 done
 
 # -- Run the scan -------------------------------------------------------------
+# Runs in the container. Every app ships its own copy of the shared dependencies,
+# so the raw report repeats each CVE per app. This prints each vulnerable package
+# once, with its CVEs and the apps it is deployed in.
+#
 # rootfs, not fs: only rootfs reads installed jars, fs only reads lock files like pom.xml.
-# The first scan in a task downloads the vulnerability and Java databases.
 # Walking EFS took ~8 minutes, past Trivy's default 5 minute timeout. Each jar
 # read is a round trip to EFS, so more than the default 5 parallel reads pays off.
 # .mule is the runtime's working data (object stores, queues), not dependencies.
+# The Mule agent plugin is also in the image, so the ECR scan already covers it.
+SCAN_SCRIPT=$(cat <<'SCRIPT'
+set -eu
+cat > /tmp/findings.tpl <<'TPL'
+{{- range . }}{{- range .Vulnerabilities }}{{ .Severity }}|{{ .PkgName }}|{{ .InstalledVersion }}|{{ .FixedVersion }}|{{ .VulnerabilityID }}|{{ .PkgPath }}
+{{ end }}{{ end -}}
+TPL
+echo "Scanning, this takes about 10 minutes..."
+trivy rootfs --quiet --scanners vuln --severity HIGH,CRITICAL --timeout 30m --parallel 20 \
+  --skip-dirs '**/.mule' --skip-dirs '**/server-plugins/mule-agent-plugin' --format template --template @/tmp/findings.tpl --output /tmp/findings.txt /scan
+APPS=$(($(find /scan/apps -mindepth 1 -maxdepth 1 -type d | wc -l)))
+
+# One record per package and version; \036 stands in for a newline until after sorting.
+awk -F'|' -v apps="$APPS" '
+  function add(list, item) { return list == "" ? item : list ", " item }
+  {
+    key = $2 " " $3
+    n = split($6, p, "/"); src = ""; isApp = 0
+    for (i = 1; i < n; i++) {
+      if (p[i] == "apps") { src = p[i + 1]; isApp = 1; break }
+      if (p[i] == "domains" || p[i] == "server-plugins") { src = p[i + 1]; break }
+    }
+    if (src == "") src = $6
+    if ($1 == "CRITICAL" || !(key in sev)) sev[key] = $1
+    if (!((key, $5) in seen)) { seen[key, $5] = 1; cves[key] = add(cves[key], $5) }
+    if ($4 != "" && !((key, "fix", $4) in seen)) { seen[key, "fix", $4] = 1; fix[key] = fix[key] == "" ? $4 : fix[key] " / " $4 }
+    if (!((key, "src", src) in seen)) {
+      seen[key, "src", src] = 1
+      if (isApp) { appList[key] = add(appList[key], src); appCount[key]++ }
+      else other[key] = add(other[key], src)
+    }
+  }
+  END {
+    for (key in sev) {
+      where = appCount[key] == apps ? "ALL " apps " apps" : appList[key]
+      if (other[key] != "") where = where == "" ? other[key] : where ", " other[key]
+      printf "%d|%d|%s  %s  (fixed in: %s)\036  %s\036  in: %s\036\n", (sev[key] == "CRITICAL" ? 1 : 2), appCount[key],
+        sev[key], key, (fix[key] == "" ? "no fix yet" : fix[key]), cves[key], where
+    }
+  }' /tmp/findings.txt | sort -t'|' -k1,1n -k2,2nr | cut -d'|' -f3- | tr '\036' '\n'
+
+echo "$(($(cut -d'|' -f2,3 /tmp/findings.txt | sort -u | wc -l))) vulnerable packages," \
+  "$(($(cut -d'|' -f5 /tmp/findings.txt | sort -u | wc -l))) unique CVEs (HIGH and CRITICAL), across $APPS apps."
+SCRIPT
+)
+
 echo ""
 $AWS ecs execute-command \
   --cluster "$CLUSTER_NAME" \
   --task "$TASK_ARN" \
   --container TrivyContainer \
   --interactive \
-  --command "trivy rootfs --scanners vuln --severity HIGH,CRITICAL --no-progress --timeout 30m --parallel 20 --skip-dirs **/.mule /scan"
+  --command "sh -c 'echo $(printf '%s' "$SCAN_SCRIPT" | base64 | tr -d '\n') | base64 -d | sh'"
